@@ -1,0 +1,17 @@
+node_modules/
+*.tgz
+*.log
+logs/
+coverage/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+profiles/
+test/evidence/
+*.env
+.credentials*
+*.pem
+*.key
+.npmrc
+screenshots/

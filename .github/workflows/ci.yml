@@ -1,0 +1,35 @@
+name: ci
+
+# Prepared workflow for the eventual public repo: the package root is this
+# directory, tests are dependency-free Node scripts.
+permissions:
+  contents: read
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Syntax check
+        run: npm run check
+      - name: Permission policy unit tests
+        run: node test/policy-selftest.mjs
+      - name: Unified tool unit tests
+        run: node test/tool-selftest.mjs
+      - name: Config and diagnostics unit tests
+        run: node test/config-selftest.mjs
+      - name: Settings overlay, selection and RPC unit tests
+        run: node test/settings-selftest.mjs
+      - name: ACP transport unit tests (mock peer, no network)
+        run: node test/transport-selftest.mjs

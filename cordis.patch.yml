@@ -1,0 +1,11 @@
+# dsh-subagent-remote bundle patch.
+#
+# A bundle is enabled by selecting it in the profile (`dsh.profile.bundles`).
+# The row starts with no hosts: open "插件 -> dsh-subagent-remote" and add the
+# machines you want to delegate to (they are stored in the plugin's JSON overlay,
+# not in this file). Keeping the baseline empty means a fresh install can never
+# point at a wrong machine or carry a credential-adjacent host definition.
+- insert:
+    - id: subagent-remote
+      name: dsh-subagent-remote
+      config: {}
