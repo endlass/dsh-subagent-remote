@@ -4,24 +4,39 @@
 DSH `acp` profile 执行（SSH + ACP over stdio），再把远端 agent 的 closing message 返回
 本地父会话。
 
-> 状态：`0.9.2-rc.2`（私有候选版），已在 DSH `0.2.1-rc.2` 上验证（Windows 桌面 →
+<img src="assets/icon-128.png" width="88" align="right" alt="dsh-subagent-remote icon" />
+
+> 状态：`0.9.2-rc.3`（候选版），已在 DSH `0.2.1-rc.2` 上验证（Windows 桌面 →
 > 一台 Linux 主机、一台 macOS 主机、以及本地 `acp` profile）。**尚未发布到 npm**。
 > English README: [README.md](README.md)
 
-## 安装（私有候选版）
+## 截图
 
-作为组合包（bundle）安装到某个 profile：
+| 插件页（已安装） | 配置页 | 主机编辑 |
+|---|---|---|
+| ![插件页](assets/screenshots/market-plugins.png) | ![配置页](assets/screenshots/config-hosts.png) | ![编辑](assets/screenshots/config-edit.png) |
+
+## 定位（与官方远程/移动端规划的区别）
+
+官方的「远程与移动端」是**从别的设备访问同一个 DSH 会话**；本插件解决的是
+**跨机算力委派**：父会话留在本机，另一台机器用它自己的 DSH 运行时（工具、工作区、
+模型、SSH 目标）执行一次性任务，只把 closing message 带回父会话；父会话不迁移、
+不通过本插件对外暴露。
+
+## 安装
+
+**桌面/Web（官方插件页，推荐）**：**插件 → 添加插件**，输入 npm 包名
+`dsh-subagent-remote` 确认；安装后出现在 **已安装插件**，点 **打开配置**。
+
+CLI 方式（指定 profile）：
 
 ```powershell
-# 从私有制品 tarball（当前方式）
-dsh plugin --profile <profile> add "file:C:\path\to\dsh-subagent-remote-0.9.2-rc.1.tgz"
-
-# 或先解压 / 用 link: 指向本地目录
+dsh plugin --profile <profile> add dsh-subagent-remote
+# 本地 checkout 开发
 dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
-
-# 未来从 npm（公开后）
-dsh plugin --profile <profile> add dsh-subagent-remote@0.9.2-rc.1
 ```
+
+兼容性：`0.9.2-rc.3` 已在 DSH `0.2.1-rc.3` / `0.2.1-rc.2` 验证。
 
 装好后启动 profile：`dsh <profile> --port <端口> --no-open`，在 Web/桌面端
 **插件 → 已安装插件 → dsh-subagent-remote → 打开配置** 里添加主机。

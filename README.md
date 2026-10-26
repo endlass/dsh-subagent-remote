@@ -1,5 +1,7 @@
 # dsh-subagent-remote
 
+<img src="assets/icon-128.png" width="88" align="right" alt="dsh-subagent-remote icon" />
+
 [中文](README.zh.md) | English
 
 Cross-machine (remote) subagent provider for DeepSeek Harness (DSH). A delegation
@@ -10,6 +12,26 @@ closing message to the local parent session.
 > Release candidate: `0.9.2-rc.2`, verified on DSH **0.2.1-rc.2** (Windows desktop
 > parent → a Linux host, a macOS host, and a local `acp` profile). Private
 > repository; not published to npm.
+
+## Screenshots
+
+| Plugins page (installed plugin) | Configuration page | Host editor |
+|---|---|---|
+| ![Plugins page](assets/screenshots/market-plugins.png) | ![Configuration](assets/screenshots/config-hosts.png) | ![Editor](assets/screenshots/config-edit.png) |
+
+## Positioning vs the official "remote & mobile" roadmap
+
+Official DSH is working on **remote and mobile access**: reaching *the same* local
+session from another device. This plugin solves a different problem: **cross-machine
+compute delegation**. The parent session stays on the local machine, and a
+different machine's own DSH runtime (its tools, workspace, model, SSH target)
+executes a one-shot task. Nothing about the local session is migrated or exposed
+over the network by this plugin.
+
+That distinction matters when choosing between them: use official remote access to
+continue *your* session elsewhere; use this plugin to run work on *another* machine's
+DSH (cloud Linux box, a Mac with GUI apps, a colleague's build machine) and bring
+back only the closing message.
 
 ## Why
 
@@ -94,19 +116,34 @@ Useful when the strict official tool wording/schema is preferred:
 
 ## Install
 
-As a bundle (recommended; appears under 已安装插件 with its config page):
+**Desktop / Web (official plugin manager, recommended):** open **插件 → 添加插件**,
+enter the npm package name `dsh-subagent-remote` and confirm. It appears under
+**已安装插件**; open it and use **打开配置**.
+
+CLI alternative (for a specific profile):
 
 ```powershell
-# once published
 dsh plugin --profile <profile> add dsh-subagent-remote
-# or from a local checkout during development
+# development from a local checkout:
 dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
 ```
 
 Then start the profile (`dsh <profile> --port <n> --no-open`). The bundle patch inserts
 one row with no hosts; open **插件 → dsh-subagent-remote** and add the target machines.
 The plugin row still works path-loaded from a profile patch (dev workflow), but the
-config page only exists for bundle installs.
+config page only exists for bundle installs. A fresh bundle install starts empty, so
+nothing is dispatched until you add and enable a host.
+
+### Compatibility
+
+| Plugin | DSH | Status |
+|---|---|---|
+| 0.9.2-rc.3 | `0.2.1-rc.3` | verified (desktop Windows host; Linux/macOS targets) |
+| 0.9.2-rc.3 | `0.2.1-rc.2` | verified |
+
+The package declares its DSH window in `dsh.compatibility`; the plugin manager
+refuses incompatible combinations and the UI is defensive about optional client
+services (see `SECURITY.md` / roadmap notes).
 ### Development: path-loaded overlay
 
 The package can also be mounted directly from a checkout without a bundle install
@@ -372,6 +409,16 @@ AbortController cancellation, stdout noise tolerance, a crashing peer, fail-clos
 unknown requests, foreign-session rejection, credential env scrubbing,
 remote-session close vs keep, and expected-agent mismatch — plus an orphan audit
 that every mock peer exited.
+
+## Releasing
+
+1. Bump `version` in `package.json` and add a `CHANGELOG.md` entry.
+2. `npm run check && npm test`.
+3. Tag and push: `git tag v0.9.2-rc.3 && git push origin main --tags` (or run the
+   **publish** workflow manually).
+4. `.github/workflows/publish.yml` publishes with npm provenance; pre-release
+   versions go to the `next` dist-tag, releases to `latest`. It needs an
+   `NPM_TOKEN` repository secret; `prepublishOnly` re-runs the checks locally.
 
 ## CI
 

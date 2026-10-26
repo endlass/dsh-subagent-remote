@@ -1,6 +1,6 @@
 {
   "name": "dsh-subagent-remote",
-  "version": "0.9.2-rc.2",
+  "version": "0.9.2-rc.3",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -24,6 +24,9 @@
   "files": [
     "index.js",
     "lib",
+    "assets/icon.png",
+    "assets/icon-128.png",
+    "assets/screenshots",
     "README.md",
     "README.zh.md",
     "CHANGELOG.md",
@@ -38,7 +41,8 @@
     "test:tool": "node test/tool-selftest.mjs",
     "test:config": "node test/config-selftest.mjs",
     "test:settings": "node test/settings-selftest.mjs",
-    "test:transport": "node test/transport-selftest.mjs"
+    "test:transport": "node test/transport-selftest.mjs",
+    "prepublishOnly": "npm run check && npm test"
   },
   "dsh": {
     "bundle": {
@@ -59,8 +63,9 @@
       ]
     },
     "compatibility": {
-      "dsh": "0.2.1-rc.2",
+      "dsh": "0.2.1-rc.3",
       "dshReleases": {
+        "0.2.1-rc.3": "compatible",
         "0.2.1-rc.2": "compatible"
       },
       "profiles": [
@@ -80,5 +85,6 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "icon": "./assets/icon.png"
 }

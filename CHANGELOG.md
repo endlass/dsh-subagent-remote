@@ -3,6 +3,21 @@
 All notable changes to `dsh-subagent-remote` are documented here. Versions use
 semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
+## 0.9.2-rc.3
+
+Marketplace/roadmap polish.
+
+- Verified against DSH 0.2.1-rc.3 (and rc.2); `dsh.compatibility` updated.
+- Install guidance now points at the official **Plugins → 添加插件** npm-name flow.
+- Added plugin icon and sanitized screenshots (official plugin page, config page,
+  host editor) for the marketplace/README.
+- README explains the difference from the official "remote & mobile" roadmap:
+  cross-machine compute delegation, not remote access to the local session.
+- Client bundle falls back to plain HTML controls when optional DSH client
+  services/primitives are missing; plugin-page registration degrades to a settings
+  section instead of breaking.
+- Added release workflow (tag / manual dispatch) with npm provenance.
+
 ## 0.9.2-rc.2
 
 Security hardening after an independent audit (private pre-release).

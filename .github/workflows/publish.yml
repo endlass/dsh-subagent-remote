@@ -1,0 +1,35 @@
+name: publish
+
+# Publish to npm when a release tag is pushed (vX.Y.Z), or manually from the UI.
+# Requires an NPM_TOKEN secret with publish rights for the package.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - name: Check and test
+        run: |
+          npm run check
+          npm test
+      - name: Publish (prerelease goes to the next tag)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$VERSION" == *-* ]]; then TAG=next; else TAG=latest; fi
+          echo "publishing $VERSION with tag $TAG"
+          npm publish --access public --provenance --tag "$TAG"
