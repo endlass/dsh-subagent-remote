@@ -138,8 +138,8 @@ nothing is dispatched until you add and enable a host.
 
 | Plugin | DSH | Status |
 |---|---|---|
-| 0.9.2-rc.3 | `0.2.1-rc.3` | verified (desktop Windows host; Linux/macOS targets) |
-| 0.9.2-rc.3 | `0.2.1-rc.2` | verified |
+| 0.9.2-rc.4 | `0.2.1-rc.3` | verified (desktop Windows host; Linux/macOS targets) |
+| 0.9.2-rc.4 | `0.2.1-rc.2` | verified |
 
 The package declares its DSH window in `dsh.compatibility`; the plugin manager
 refuses incompatible combinations and the UI is defensive about optional client
@@ -414,7 +414,7 @@ that every mock peer exited.
 
 1. Bump `version` in `package.json` and add a `CHANGELOG.md` entry.
 2. `npm run check && npm test`.
-3. Tag and push: `git tag v0.9.2-rc.3 && git push origin main --tags` (or run the
+3. Tag and push: `git tag v0.9.2-rc.4 && git push origin main --tags` (or run the
    **publish** workflow manually).
 4. `.github/workflows/publish.yml` publishes with npm provenance; pre-release
    versions go to the `next` dist-tag, releases to `latest`. It needs an

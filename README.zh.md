@@ -6,7 +6,7 @@ DSH `acp` profile 执行（SSH + ACP over stdio），再把远端 agent 的 clos
 
 <img src="assets/icon-128.png" width="88" align="right" alt="dsh-subagent-remote icon" />
 
-> 状态：`0.9.2-rc.3`（候选版），已在 DSH `0.2.1-rc.2` 上验证（Windows 桌面 →
+> 状态：`0.9.2-rc.4`（候选版），已在 DSH `0.2.1-rc.2` 上验证（Windows 桌面 →
 > 一台 Linux 主机、一台 macOS 主机、以及本地 `acp` profile）。**尚未发布到 npm**。
 > English README: [README.md](README.md)
 
@@ -36,7 +36,7 @@ dsh plugin --profile <profile> add dsh-subagent-remote
 dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
 ```
 
-兼容性：`0.9.2-rc.3` 已在 DSH `0.2.1-rc.3` / `0.2.1-rc.2` 验证。
+兼容性：`0.9.2-rc.4` 已在 DSH `0.2.1-rc.3` / `0.2.1-rc.2` 验证。
 
 装好后启动 profile：`dsh <profile> --port <端口> --no-open`，在 Web/桌面端
 **插件 → 已安装插件 → dsh-subagent-remote → 打开配置** 里添加主机。
