@@ -3,6 +3,22 @@
 All notable changes to `dsh-subagent-remote` are documented here. Versions use
 semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
+## 0.9.2-rc.4
+
+Desktop boot hotfix.
+
+- **Fixed**: on desktop restart the client plugin failed to activate with
+  `cannot get property "locale" without inject` because the `locale` service was
+  dropped from `dsh.client`'s `inject` array while the apply body still read
+  `ctx.locale`. Restored the declaration (the same bug made Web/Desktop boot show
+  "Failed to load plugins / dsh-subagent-remote").
+- Added `test/client-contract-selftest.mjs`, which statically compares every
+  `ctx.<service>` access in the client bundle with the declared `inject` array, and
+  wired it into `npm test` + CI. This class of failure is invisible to Node-side
+  unit tests because the client bundle only runs inside the DSH client loader.
+- Published `latest`/`next` tags move to 0.9.2-rc.4 so plugin-manager installs pick
+  up the fix.
+
 ## 0.9.2-rc.3
 
 Marketplace/roadmap polish.

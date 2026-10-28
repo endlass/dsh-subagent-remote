@@ -33,3 +33,5 @@ jobs:
         run: node test/settings-selftest.mjs
       - name: ACP transport unit tests (mock peer, no network)
         run: node test/transport-selftest.mjs
+      - name: Client plugin contract tests
+        run: node test/client-contract-selftest.mjs
