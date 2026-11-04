@@ -505,9 +505,15 @@ dsh plugin --profile <profile> remove dsh-subagent-remote
   DSH 的插件工具链以 `engines.dsh` 作为 DSH 版本窗口的权威依据。旧的
   `dsh.compatibility` / `dsh.compatibility.dshReleases` / `dsh.plugin` 清单字段已在
   `0.9.2-rc.5` 删除——DSH 0.2.1-rc.5 从不消费它们，它们从来不是真正的闸门。
+- Client 半是自包含的纯 HTML/CSS。DSH 0.2.1-rc.5 的 client 插件规范禁止插件把
+  Harness Client 包（`@deepseek-ai/dsh-client-*`）当模块 import；原先带 guard 的
+  `dsh-client-ui-primitives` require（及其 `dsh.client.inject` 条目）已在 `0.9.2-rc.5`
+  删除。在 DSH 0.2.1-rc.5 上插件页渲染不变（那里 require 本来就会抛错、实际跑的就是这套纯
+  HTML 控件）；在仍带 primitives 的旧版本上，页面改用插件自带的这套控件，功能等价、字体
+  样式走插件自己的设计 token。
 - 已在本机 **DSH 0.2.1-rc.5** 桌面安装上验证（2026-11-04；Windows 桌面父会话 → Linux、
-  macOS 与本地 `acp` 目标）。`0.9.2-rc.5` 本身只改打包/展示；运行时代码与协议代码与 `rc.4`
-  完全相同，离线套件于 2026-11-05 复跑。
+  macOS 与本地 `acp` 目标）。`0.9.2-rc.5` 本身改的是打包/展示，外加这条 client 包的
+  规范修复；Host 运行时与协议代码与 `rc.4` 完全相同，离线套件于 2026-11-05 复跑。
 
 | 插件 | DSH | 状态 |
 |---|---|---|

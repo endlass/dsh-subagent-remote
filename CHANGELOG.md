@@ -5,15 +5,16 @@ semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
 ## 0.9.2-rc.5
 
-Packaging and display-convention alignment; **no runtime behaviour change**.
+Packaging and display-convention alignment; **no intended runtime behaviour change**.
 
 - `package.json`: added `engines.dsh: ">=0.2.0-rc.2 <0.3.0"` (the only compatibility
   gate) next to `engines.node`; added `./locale/*.json` and `./icon`
   (`→ ./assets/icon.png`) to `exports`; added `locale/*.json` to `files`; removed the
   dead `dsh.plugin` and `dsh.compatibility` fields (never consumed by the DSH
-  0.2.1-rc.5 runtime). `dsh.client` (web platform + `inject`) is unchanged: this is a
-  configuration-page client and deliberately keeps loading lazily (no
-  `immediately: true`). The top-level `icon` and the npm publishing fields
+  0.2.1-rc.5 runtime). `dsh.client` keeps the web platform and deliberately lazy
+  loading (no `immediately: true`; this is a configuration-page client), but its
+  `inject` list no longer names the removed Harness Client package (see below). The
+  top-level `icon` and the npm publishing fields
   (`keywords`/`license`/`author`/`repository`/`publishConfig`, no `private`) are kept
   because this is a public npm package.
 - Added `locale/en.json` and `locale/zh.json` (`meta.title` / `meta.description`) so
@@ -32,7 +33,17 @@ Packaging and display-convention alignment; **no runtime behaviour change**.
   Playwright acceptance harness lives in the maintainer checkout).
 - `test/` stays out of the npm tarball, matching the 0.9.2-rc.2 packaging decision
   (the offline selftests stay in the repository/CI).
-- No changes to `index.js`, `lib/**` or `test/**` logic or assertions.
+- `lib/client.js`: removed the guarded
+  `require('@deepseek-ai/dsh-client-ui-primitives')`. The DSH 0.2.1-rc.5 client-plugin
+  guidance forbids loading Harness Client packages as modules, and that package is no
+  longer in the rc.5 catalog. On `0.2.1-rc.5` the rendered page is unchanged (the
+  require already threw and the file's own plain-HTML controls ran); on older releases
+  that still shipped the primitives the page now uses those self-contained controls
+  instead — functionally equivalent, styled with the plugin's own design tokens. The
+  corresponding `@deepseek-ai/dsh-client-ui-primitives` entry is gone from
+  `dsh.client.inject` (inject entries only order activation; no module load).
+- No changes to `index.js`, `lib/**` (apart from the client-bundle conformance fix
+  above) or `test/**` logic or assertions.
 
 ## 0.9.2-rc.4
 

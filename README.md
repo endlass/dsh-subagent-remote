@@ -587,10 +587,18 @@ sessions are not deleted (see known limits).
   authoritative DSH version window. The older `dsh.compatibility` /
   `dsh.compatibility.dshReleases` / `dsh.plugin` manifest fields were removed in
   `0.9.2-rc.5` — DSH 0.2.1-rc.5 never consumed them, so they were never a real gate.
+- The client half is self-contained plain HTML/CSS. DSH 0.2.1-rc.5 client-plugin
+  guidance forbids plugins from importing Harness Client packages
+  (`@deepseek-ai/dsh-client-*`) as modules; the former guarded
+  `dsh-client-ui-primitives` require (and its `dsh.client.inject` entry) was removed in
+  `0.9.2-rc.5`. On DSH 0.2.1-rc.5 the rendered plugin page is unchanged (the require
+  already threw there and the plugin's own plain-HTML controls ran); on older releases
+  the page now uses those self-contained controls instead of the Harness primitives.
 - Verified on the local **DSH 0.2.1-rc.5** desktop install (2026-11-04; Windows
   desktop parent → Linux, macOS and local `acp` targets). The `0.9.2-rc.5` change
-  itself is packaging/display-only; the runtime and protocol code is unchanged from
-  `rc.4`, and the offline suites were re-run on 2026-11-05.
+  affects packaging/display plus that client-bundle conformance fix; the host runtime
+  and protocol code is unchanged from `rc.4`, and the offline suites were re-run on
+  2026-11-05.
 
 | Plugin | DSH | Status |
 |---|---|---|
