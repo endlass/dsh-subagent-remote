@@ -1,4 +1,4 @@
-# dsh-subagent-remote
+# Remote Subagent (`dsh-subagent-remote`)
 
 <img src="assets/icon-128.png" width="88" align="right" alt="dsh-subagent-remote icon" />
 
@@ -9,9 +9,11 @@ issued from a local DSH session runs one **one-shot** subagent task on a DSH `ac
 profile living on another machine, over SSH, and returns that remote agent's
 closing message to the local parent session.
 
-> Release candidate: `0.9.2-rc.2`, verified on DSH **0.2.1-rc.2** (Windows desktop
-> parent → a Linux host, a macOS host, and a local `acp` profile). Private
-> repository; not published to npm.
+> Release candidate `0.9.2-rc.5` (packaging/display alignment, **no runtime change**).
+> Compatibility window: `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`, verified on DSH
+> **0.2.1-rc.5** (2026-11-04; Windows desktop parent → a Linux host, a macOS host,
+> and a local `acp` profile). Pre-release builds `0.9.2-rc.3`/`0.9.2-rc.4` are
+> published on npm; `rc.5` is the packaging/display pass on top of them.
 
 ## Screenshots
 
@@ -19,31 +21,123 @@ closing message to the local parent session.
 |---|---|---|
 | ![Plugins page](assets/screenshots/market-plugins.png) | ![Configuration](assets/screenshots/config-hosts.png) | ![Editor](assets/screenshots/config-edit.png) |
 
-## Positioning vs the official "remote & mobile" roadmap
+## Capabilities
 
-Official DSH is working on **remote and mobile access**: reaching *the same* local
-session from another device. This plugin solves a different problem: **cross-machine
-compute delegation**. The parent session stays on the local machine, and a
-different machine's own DSH runtime (its tools, workspace, model, SSH target)
-executes a one-shot task. Nothing about the local session is migrated or exposed
-over the network by this plugin.
+- **Cross-machine one-shot delegation** — a local DSH session delegates a
+  self-contained task to another machine's own DSH runtime (its tools, workspace,
+  model and credentials); only the remote closing message comes back. Nothing about
+  the local session is migrated or exposed over the network.
+- **Unified multi-host tool** — one model-facing `remote_subagent` tool with a
+  `host` argument; adding a machine is a configuration change, not a new tool row.
+  An explicit legacy mode (`@deepseek-ai/dsh-tool-subagent` per host) is also
+  supported.
+- **Fail-closed permission policy** — `read-only` (default heuristic), `ask`
+  (one in-turn run-scoped approval at dispatch), `deny`, `auto`. With no answer, a
+  risky remote tool call is refused, never allowed.
+- **Configuration page with hot reload** — the Plugins page lists hosts, probes SSH
+  connectivity, edits field overrides and sets/clears the default host; page writes
+  are persisted in a JSON overlay (a delta on the profile patch) and applied
+  immediately — no restart for page edits.
+- **Conversational host switching** — `/remote-host` lists hosts and switches the
+  current session's target host.
+- **Structured diagnostics** — fixed failure facts (`stage=`/`category=`), canned
+  hints, permission decisions, `agent=`, env-scrub and peer-exit facts; raw remote
+  text stays debug-gated.
+- **Zero-dependency ESM Cordis plugin** — `index.js` plus `lib/*`; no third-party
+  dependencies, and the whole package is dependency-free to test offline.
 
-That distinction matters when choosing between them: use official remote access to
-continue *your* session elsewhere; use this plugin to run work on *another* machine's
-DSH (cloud Linux box, a Mac with GUI apps, a colleague's build machine) and bring
-back only the closing message.
+## Installation forms
 
-## Why
+### Registry install (recommended: official Plugins page or CLI)
 
-DSH's official out-of-process ACP subagent backend is deliberately local-only:
-`session/new.cwd` is the local working directory and there is no remote workspace
-mapping. This plugin supplies that missing transport: it starts the remote DSH
-itself and sets the ACP session workspace to a **remote absolute path**, so the
-remote agent uses its own machine's tools, sandbox, model, and credentials while
-the local Lead session never moves.
+**Desktop / Web (official plugin manager, recommended):** open **插件 → 添加插件**,
+enter the npm package name `dsh-subagent-remote` and confirm. It appears under
+**已安装插件**; open it and use **打开配置**.
 
-This is not a shared workspace and not a remote IDE session: the remote side is
-one subagent activation of the local conversation.
+CLI alternative (for a specific profile):
+
+```powershell
+dsh plugin --profile <profile> add dsh-subagent-remote
+```
+
+Published builds are pre-releases: the publish workflow maps pre-release versions
+(`-rc.N`) to the npm `next` dist-tag and only final releases to `latest`
+(`0.9.2-rc.4` is the most recently published build at the time of writing).
+
+### Local checkout (`link:`) for development
+
+```powershell
+dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
+```
+
+(The same `link:` protocol works on POSIX hosts with the checkout path.) A link
+install resolves the checkout directly, so `files` is irrelevant there — it only
+decides what a registry tarball ships.
+
+### Activation conditions (both forms)
+
+- Start the profile after installing: `dsh <profile> --port <n> --no-open`. The
+  bundle patch inserts one row with no hosts; open **插件 → dsh-subagent-remote**
+  (or **已安装插件 → dsh-subagent-remote → 打开配置**) and add the target machines.
+- **Host half**: plugin code is loaded by the Host process — an install, an upgrade
+  or any `index.js`/`lib/**` change needs a **DSH restart** (desktop app restart or
+  profile process restart) to take effect.
+- **Client bundle**: a `lib/client.js` change only needs a **Web page refresh**.
+  `dsh.client` deliberately has **no `immediately: true`**: this is a
+  configuration-page client, loaded lazily when the Plugins page/settings opens, so
+  the normal chat boot path pays nothing. It still declares its web platform and all
+  `inject` packages the bundle reads.
+- **Headless / ACP deployments** have no `connection`/`commands` services: the
+  plugin still loads and dispatch works; only the UI surfaces are absent.
+- A fresh bundle install starts empty, so nothing is dispatched until you add and
+  enable a host.
+- The plugin row also works path-loaded from a profile patch (development workflow),
+  but the configuration page only exists for bundle installs.
+
+### Path-loaded overlay (development alternative)
+
+The package can also be mounted directly from a checkout without a bundle install
+(useful while iterating on the plugin itself). Point the insert row at this
+folder's `index.js`; a relative `name` is resolved against the patch file:
+
+```yaml
+- insert:
+    - id: subagent-remote
+      name: ../path/to/dsh-subagent-remote/index.js
+      config: { ... }
+```
+
+Then `dsh --profile headless --patch <patch> "…"`. The Plugins-page configuration
+UI only exists for bundle installs.
+
+## Files
+
+| File / directory | Purpose |
+|---|---|
+| `package.json` | npm manifest: `exports` (`.`, `./client`, `./locale/*.json`, `./icon`, `./package.json`), `files`, `engines.node`/`engines.dsh`, the `dsh.bundle.patch` and `dsh.client` blocks, and the top-level `icon` |
+| `cordis.patch.yml` | bundle patch inserted into the profile; adds the `subagent-remote` host row with an empty `config` (zero hosts by default, so a fresh install can never point at a wrong machine) |
+| `index.js` | Host half entry: Cordis plugin that registers one out-of-process subagent provider per host, the unified tool/command, and the `/api/dsh-subagent-remote` RPC used by the page |
+| `lib/acp.js` | ACP-over-stdio transport: `initialize`/`session/new`/`session/prompt`/`session/update`, permission correlation, bounded teardown, remote-pid reaping |
+| `lib/policy.js` | permission classification and fail-closed decisions for `read-only`/`ask`/`deny`/`auto` |
+| `lib/tool.js` | the unified `remote_subagent` tool definition and dispatch/default-host resolution |
+| `lib/settings.js` | JSON overlay storage (atomic temp+rename writes), host selection, RPC envelope and hot-apply payload |
+| `lib/client.js` | Client half (Web/Desktop): Plugins-page configuration panel, Settings-section fallback, locale registration; loaded lazily |
+| `locale/en.json`, `locale/zh.json` | display metadata for the Plugins page (`meta.title` / `meta.description`) |
+| `assets/icon.png` | plugin icon (PNG, ≤256 KiB), referenced by the top-level `icon` and the `./icon` export |
+| `assets/icon-128.png` | the larger icon used in the README header |
+| `assets/screenshots/` | README screenshots (sanitized) |
+| `README.md`, `README.zh.md` | user documentation (English / Chinese) |
+| `CHANGELOG.md` | version history |
+| `SECURITY.md` | trust model, reporting, security caveats |
+| `LICENSE` | MIT |
+| `test/` | zero-dependency offline selftests plus the mock ACP peer; kept in the repository/CI and **not shipped in the npm tarball** (repo/CI only) |
+| `.github/workflows/` | CI (Ubuntu + Windows, Node 22) and the npm publish workflow |
+
+The Plugins page shows the plugin **title, description and icon** read from
+`locale/en.json` + `locale/zh.json` (`meta.title` / `meta.description`) and the
+package top-level `icon` (`./assets/icon.png`). Without a locale file the page falls
+back to the package `name` and `description` — that long text is for humans, the
+locale files are what the UI actually renders.
 
 ## How it works
 
@@ -61,9 +155,35 @@ local DSH parent (Lead session stays local)
 The plugin is a **zero-dependency ESM Cordis plugin**: `index.js` + `lib/acp.js`
 (transport), `lib/policy.js` (permission), `lib/tool.js` (V2 unified tool).
 
-## Two ways to expose delegation to the model
+### Why
 
-### V2 unified tool (recommended)
+DSH's official out-of-process ACP subagent backend is deliberately local-only:
+`session/new.cwd` is the local working directory and there is no remote workspace
+mapping. This plugin supplies that missing transport: it starts the remote DSH
+itself and sets the ACP session workspace to a **remote absolute path**, so the
+remote agent uses its own machine's tools, sandbox, model, and credentials while
+the local Lead session never moves.
+
+This is not a shared workspace and not a remote IDE session: the remote side is
+one subagent activation of the local conversation.
+
+### Positioning vs the official "remote & mobile" roadmap
+
+Official DSH is working on **remote and mobile access**: reaching *the same* local
+session from another device. This plugin solves a different problem: **cross-machine
+compute delegation**. The parent session stays on the local machine, and a
+different machine's own DSH runtime (its tools, workspace, model, SSH target)
+executes a one-shot task. Nothing about the local session is migrated or exposed
+over the network by this plugin.
+
+That distinction matters when choosing between them: use official remote access to
+continue *your* session elsewhere; use this plugin to run work on *another* machine's
+DSH (cloud Linux box, a Mac with GUI apps, a colleague's build machine) and bring
+back only the closing message.
+
+### Two ways to expose delegation to the model
+
+#### V2 unified tool (recommended)
 
 One model-facing tool with a `host` parameter; adding a machine is a config
 change, not a new tool row:
@@ -91,7 +211,7 @@ change, not a new tool row:
         remoteArgs: ['-T', '-p', '2222', 'user@127.0.0.1', '<mac dsh command>']
 ```
 
-### Legacy: one official tool row per host
+#### Legacy: one official tool row per host
 
 Useful when the strict official tool wording/schema is preferred:
 
@@ -114,51 +234,7 @@ Useful when the strict official tool wording/schema is preferred:
         maxDepth: provider-managed
 ```
 
-## Install
-
-**Desktop / Web (official plugin manager, recommended):** open **插件 → 添加插件**,
-enter the npm package name `dsh-subagent-remote` and confirm. It appears under
-**已安装插件**; open it and use **打开配置**.
-
-CLI alternative (for a specific profile):
-
-```powershell
-dsh plugin --profile <profile> add dsh-subagent-remote
-# development from a local checkout:
-dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
-```
-
-Then start the profile (`dsh <profile> --port <n> --no-open`). The bundle patch inserts
-one row with no hosts; open **插件 → dsh-subagent-remote** and add the target machines.
-The plugin row still works path-loaded from a profile patch (dev workflow), but the
-config page only exists for bundle installs. A fresh bundle install starts empty, so
-nothing is dispatched until you add and enable a host.
-
-### Compatibility
-
-| Plugin | DSH | Status |
-|---|---|---|
-| 0.9.2-rc.4 | `0.2.1-rc.3` | verified (desktop Windows host; Linux/macOS targets) |
-| 0.9.2-rc.4 | `0.2.1-rc.2` | verified |
-
-The package declares its DSH window in `dsh.compatibility`; the plugin manager
-refuses incompatible combinations and the UI is defensive about optional client
-services (see `SECURITY.md` / roadmap notes).
-### Development: path-loaded overlay
-
-The package can also be mounted directly from a checkout without a bundle install
-(useful while iterating on the plugin itself). Point the insert row at this
-folder's `index.js`; a relative `name` is resolved against the patch file:
-
-```yaml
-- insert:
-    - id: subagent-remote
-      name: ../path/to/dsh-subagent-remote/index.js
-      config: { ... }
-```
-
-Then `dsh --profile headless --patch <patch> "…"`. The Plugins-page configuration
-UI only exists for bundle installs.
+## Configuration
 
 ### Host fields
 
@@ -220,14 +296,15 @@ Verified: the local child reports the local hostname and the parent workspace;
 `stopReason=completed`; the model-listing line the ACP profile prints to stdout is
 tolerated as `stdoutNoise`.
 
-## Installed-plugin page (Web/Desktop) and JSON overlay
+### Installed-plugin page (Web/Desktop) and JSON overlay
 
 In the Web or DSH Desktop UI, **远端子智能体** appears on the **插件 (Plugins)**
 page as a card; opening it shows the full configuration page. This is the official
 placement for per-plugin configuration (`plugins.item` slot, the same surface the
 official subagent/shell settings pages use). The page is a small module-loader
 bundle plus a Host `/api/dsh-subagent-remote` RPC — no official client packages are
-required:
+required, and the bundle falls back to a plain Settings section when optional client
+services or plugin-page slots are missing (it never breaks the boot path):
 
 - lists the effective hosts (name, endpoint, workspace, permission, remote-session
   policy, env-scrub state, which one is the default);
@@ -362,31 +439,34 @@ spells non-ASCII text as C octal escapes (`\262\273\326\252…`). The plugin dec
 both, so a `zh-CN` Windows error reads as 「不知道这样的主机。」 instead of octal
 noise (visible in debug mode).
 
-## Upgrade checklist
+## Security & boundaries
 
-Protocol facts here were measured against DSH **0.2.1-rc.2**. After upgrading DSH
-on either side:
+- **The remote machine is trusted**: the plugin runs DSH and its tools there. Only
+  configure machines you control.
+- **No built-in hosts, accounts or keys**: hosts come from the profile patch or the
+  plugin's JSON overlay; SSH credentials stay entirely with your local `ssh`
+  configuration (agent/keys).
+- **Credential env scrubbing** is on by default for SSH peers (`scrubEnv: true`)
+  and preserves `SSH_AUTH_SOCK` for agent forwarding; explicit `env` is layered
+  after scrubbing (send it only when the remote `sshd` accepts `SendEnv`).
+- **Host keys** follow your local ssh config; `BatchMode=yes` makes an unknown host
+  key fail closed. `StrictHostKeyChecking=accept-new` is TOFU — verify the
+  fingerprint afterwards.
+- **`read-only` is not a security boundary** (see the permission model above); for
+  untrusted targets use `deny` or a remote sandbox.
+- **Remote output is untrusted**: the closing message and remote-authored diagnostic
+  values can carry prompt injection into the parent session; treat them as external
+  input.
+- **Remote session history is not deleted**: `remoteSession: close` only closes the
+  ACP session (ACP has no delete API).
+- **Debug flag**: `DSH_SUBAGENT_REMOTE_DEBUG=1` exposes raw remote stderr/stdout
+  (which may contain remote paths/hostnames) to the parent session; use it only on
+  machines you control and never paste the output publicly.
+- **No telemetry**. Full trust model and vulnerability reporting: [SECURITY.md](SECURITY.md).
 
-1. `npm test` (all five files) — catches config/protocol contract drift.
-2. Run one read-only delegation against each configured host (maintainers keep the
-   end-to-end harness in their local checkout; it is not part of this package).
-3. Check the completion notice's `agent=` line: the ACP server's `agentInfo.version`
-   is **not** the DSH version, so a real version gate needs an out-of-band check
-   (`ssh <host> dsh --version`); `expectAgentName` only pins the agent identity.
-4. Before adding new protocol interactions: unknown frames are meant to fail, not
-   to be skipped. Host-key verification follows the local ssh config; `BatchMode`
-   makes an unknown key fail closed. If you add `accept-new`, you accept TOFU.
+## Development & verification
 
-## Backend norms
-
-This provider follows the official out-of-process backend norms: provider
-capabilities all false, `result` never rejects, publish-before-return with async
-settlement, fixed failure categories, credential env scrubbing, fail-closed unknown
-protocol frames, and debug-only raw payloads. The deliberate difference is that our
-`start()` returns immediately and settles asynchronously, because a remote ACP run
-cannot be handshaked inside the publishing call.
-
-## Tests
+### Tests
 
 ```powershell
 # pure unit tests (no DSH, no network, no credentials) — also what CI runs
@@ -395,12 +475,18 @@ node test/tool-selftest.mjs       # unified tool definition + dispatch + default
 node test/config-selftest.mjs     # config, ssh validation, task validation, failures, diagnostics, stderr decoding, env scrub
 node test/settings-selftest.mjs   # overlay merge/atomic state, host selection, RPC envelope, hot-apply payload
 node test/transport-selftest.mjs  # ACP transport against a mock peer
+node test/client-contract-selftest.mjs  # client bundle `inject` contract (every ctx.<service> declared)
 npm run check                     # node --check on every source file
-npm test                          # all five files (327 checks, ~7s)
+npm test                          # all six files (331 checks, ~7s)
 ```
 
+Latest evidence: `npm run check` and `npm test` (all six offline suites, including
+`PASS client-contract-selftest`) pass on the packaging/display pass, 2026-11-05;
+`engines.dsh` window verified against the local DSH 0.2.1-rc.5 install (2026-11-04).
+
 The end-to-end and Playwright acceptance harnesses live in the maintainer checkout,
-not in the published package (the package ships only the five offline selftests).
+not in the published package. The npm tarball excludes `test/` entirely (the six
+offline suites stay in the repository/CI); `files` controls that split.
 
 The transport suite spawns `test/fixtures/mock-acp-peer.mjs` (behaviour selected by
 `MOCK_MODE=ok|permission|hang|noise|crash|unknown-request|session-mismatch|env`) and
@@ -410,21 +496,76 @@ unknown requests, foreign-session rejection, credential env scrubbing,
 remote-session close vs keep, and expected-agent mismatch — plus an orphan audit
 that every mock peer exited.
 
-## Releasing
+### Upgrade checklist
+
+Protocol facts here were measured against DSH **0.2.1-rc.2** and have not changed
+through the 0.2.1-rc.5 packaging pass. After upgrading DSH on either side:
+
+1. `npm test` (all six files) — catches config/protocol contract drift.
+2. Run one read-only delegation against each configured host (maintainers keep the
+   end-to-end harness in their local checkout; it is not part of this package).
+3. Check the completion notice's `agent=` line: the ACP server's `agentInfo.version`
+   is **not** the DSH version, so a real version gate needs an out-of-band check
+   (`ssh <host> dsh --version`); `expectAgentName` only pins the agent identity.
+4. Before adding new protocol interactions: unknown frames are meant to fail, not
+   to be skipped. Host-key verification follows the local ssh config; `BatchMode`
+   makes an unknown key fail closed. If you add `accept-new`, you accept TOFU.
+
+### Backend norms
+
+This provider follows the official out-of-process backend norms: provider
+capabilities all false, `result` never rejects, publish-before-return with async
+settlement, fixed failure categories, credential env scrubbing, fail-closed unknown
+protocol frames, and debug-only raw payloads. The deliberate difference is that our
+`start()` returns immediately and settles asynchronously, because a remote ACP run
+cannot be handshaked inside the publishing call.
+
+### Releasing
 
 1. Bump `version` in `package.json` and add a `CHANGELOG.md` entry.
 2. `npm run check && npm test`.
-3. Tag and push: `git tag v0.9.2-rc.4 && git push origin main --tags` (or run the
+3. Tag and push: `git tag v0.9.2-rc.5 && git push origin main --tags` (or run the
    **publish** workflow manually).
 4. `.github/workflows/publish.yml` publishes with npm provenance; pre-release
    versions go to the `next` dist-tag, releases to `latest`. It needs an
    `NPM_TOKEN` repository secret; `prepublishOnly` re-runs the checks locally.
 
-## CI
+### CI
 
-`.github/workflows/ci.yml` is prepared for the eventual public repo (Ubuntu +
-Windows, Node 22): syntax check plus all five unit test files. The Playwright
-settings-UI acceptance is intentionally not part of CI (it needs a running Web UI).
+`.github/workflows/ci.yml` is prepared for the public repo (Ubuntu + Windows,
+Node 22): syntax check plus all six offline test files (including the client
+contract selftest). The Playwright settings-UI acceptance is intentionally not part
+of CI (it needs a running Web UI).
+
+## Install / uninstall / rollback
+
+### Install
+
+Use one of the [installation forms](#installation-forms) above: the official
+Plugins page with the npm package name, or
+`dsh plugin --profile <profile> add dsh-subagent-remote`. Restart DSH afterwards
+(the Host half loads at profile boot); a client-resource-only change needs just a
+page refresh.
+
+### Uninstall
+
+```powershell
+dsh plugin --profile <profile> remove dsh-subagent-remote
+```
+
+or remove it from the Plugins page, then restart DSH. Optional cleanup: delete the
+overlay `$DSH_HOME/subagent-remote.json` — it holds page-added hosts and the
+default-host selection (keep it if you plan to reinstall). Remote persistent
+sessions are not deleted (see known limits).
+
+### Rollback
+
+- **Registry install**: pin the previous published build and restart:
+  `dsh plugin --profile <profile> add dsh-subagent-remote@0.9.2-rc.4`.
+- **Link/development install**: `git checkout <previous-commit-or-tag>` in the
+  checkout, then restart DSH.
+- **Configuration-only rollback**: restore/delete the JSON overlay (or the profile
+  patch backup); a hand-edited overlay needs a restart, page edits are hot.
 
 ## Known limits (V1/V2)
 
@@ -439,12 +580,20 @@ settings-UI acceptance is intentionally not part of CI (it needs a running Web U
 * The read-only classification is a conservative heuristic (tool-name allowlist +
   shell write-pattern scan), not a complete static analysis.
 
+## Compatibility
 
+- The only compatibility gate is `engines.dsh: ">=0.2.0-rc.2 <0.3.0"` (next to
+  `engines.node: ">=22"`); DSH's plugin tooling treats `engines.dsh` as the
+  authoritative DSH version window. The older `dsh.compatibility` /
+  `dsh.compatibility.dshReleases` / `dsh.plugin` manifest fields were removed in
+  `0.9.2-rc.5` — DSH 0.2.1-rc.5 never consumed them, so they were never a real gate.
+- Verified on the local **DSH 0.2.1-rc.5** desktop install (2026-11-04; Windows
+  desktop parent → Linux, macOS and local `acp` targets). The `0.9.2-rc.5` change
+  itself is packaging/display-only; the runtime and protocol code is unchanged from
+  `rc.4`, and the offline suites were re-run on 2026-11-05.
 
-
-
-
-
-
-
-
+| Plugin | DSH | Status |
+|---|---|---|
+| 0.9.2-rc.5 | `0.2.1-rc.5` | verified (desktop Windows host; Linux/macOS targets) — packaging/display pass |
+| 0.9.2-rc.4 | `0.2.1-rc.3` | verified (desktop Windows host; Linux/macOS targets) |
+| 0.9.2-rc.4 | `0.2.1-rc.2` | verified |

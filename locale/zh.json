@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "远端子智能体",
+    "description": "从本地 DSH 会话把一次性子任务经 SSH（ACP）派发到另一台机器的 DSH 执行；支持多主机配置与 fail-closed 权限策略。"
+  }
+}

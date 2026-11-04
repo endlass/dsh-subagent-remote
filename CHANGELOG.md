@@ -3,6 +3,37 @@
 All notable changes to `dsh-subagent-remote` are documented here. Versions use
 semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
+## 0.9.2-rc.5
+
+Packaging and display-convention alignment; **no runtime behaviour change**.
+
+- `package.json`: added `engines.dsh: ">=0.2.0-rc.2 <0.3.0"` (the only compatibility
+  gate) next to `engines.node`; added `./locale/*.json` and `./icon`
+  (`→ ./assets/icon.png`) to `exports`; added `locale/*.json` to `files`; removed the
+  dead `dsh.plugin` and `dsh.compatibility` fields (never consumed by the DSH
+  0.2.1-rc.5 runtime). `dsh.client` (web platform + `inject`) is unchanged: this is a
+  configuration-page client and deliberately keeps loading lazily (no
+  `immediately: true`). The top-level `icon` and the npm publishing fields
+  (`keywords`/`license`/`author`/`repository`/`publishConfig`, no `private`) are kept
+  because this is a public npm package.
+- Added `locale/en.json` and `locale/zh.json` (`meta.title` / `meta.description`) so
+  the Plugins page shows a real name and a one-line capability description instead of
+  falling back to the package name and the old bilingual paragraph.
+- `description` shortened to one Chinese sentence plus a short English clause; the
+  long bilingual text it replaced already lives in the READMEs.
+- `README.md` / `README.zh.md`: restructured to the shared header (`能力` /
+  `安装形态` / `文件` / … / `兼容性`), added a file-responsibility table and the
+  registry + local-checkout (`link:`) installation forms with activation conditions,
+  refreshed compatibility to the `engines.dsh` wording (verified on DSH 0.2.1-rc.5,
+  2026-11-04), and documented that the title/description/icon on the Plugins page come
+  from `locale/*.json` `meta` plus the package `icon`. README.zh.md no longer claims
+  the package is unpublished («尚未发布到 npm»; rc.3/rc.4 are on npm) and no longer
+  points at a `test/playwright/` directory that is not in the repository (the
+  Playwright acceptance harness lives in the maintainer checkout).
+- `test/` stays out of the npm tarball, matching the 0.9.2-rc.2 packaging decision
+  (the offline selftests stay in the repository/CI).
+- No changes to `index.js`, `lib/**` or `test/**` logic or assertions.
+
 ## 0.9.2-rc.4
 
 Desktop boot hotfix.

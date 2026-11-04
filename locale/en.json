@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Remote Subagent",
+    "description": "Dispatch one-shot subagent tasks from a local DSH session to another machine's DSH over SSH (ACP), with multi-host config and a fail-closed permission policy."
+  }
+}
