@@ -9,11 +9,11 @@ issued from a local DSH session runs one **one-shot** subagent task on a DSH `ac
 profile living on another machine, over SSH, and returns that remote agent's
 closing message to the local parent session.
 
-> Release candidate `0.9.2-rc.5` (packaging/display alignment, **no runtime change**).
-> Compatibility window: `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`, verified on DSH
-> **0.2.1-rc.5** (2026-11-04; Windows desktop parent → a Linux host, a macOS host,
-> and a local `acp` profile). Pre-release builds `0.9.2-rc.3`/`0.9.2-rc.4` are
-> published on npm; `rc.5` is the packaging/display pass on top of them.
+> Release candidate `0.9.2-rc.6` (new **Windows-remote** cmd carrier; verified
+> end-to-end). Compatibility window: `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`.
+> Verified on DSH `0.2.1-rc.5` (Windows desktop parent → a Linux host, a macOS host,
+> and a local `acp` profile) and DSH `0.2.2-rc.1` (macOS parent → Windows remote).
+> Pre-release builds `0.9.2-rc.3`/`0.9.2-rc.4` are published on npm.
 
 ## Screenshots
 
@@ -27,6 +27,11 @@ closing message to the local parent session.
   self-contained task to another machine's own DSH runtime (its tools, workspace,
   model and credentials); only the remote closing message comes back. Nothing about
   the local session is migrated or exposed over the network.
+- **Windows remote** — when the host `cwd` is a drive-letter path (e.g.
+  `C:/Users/me/work`) the plugin automatically uses a `cmd.exe` carrier: the remote
+  command goes straight to Windows OpenSSH's `cmd.exe`, so no Git Bash is required
+  on the target. The POSIX pid probe is unavailable on that carrier, so remote
+  reaping becomes best-effort (ACP itself does not depend on the pid).
 - **Unified multi-host tool** — one model-facing `remote_subagent` tool with a
   `host` argument; adding a machine is a configuration change, not a new tool row.
   An explicit legacy mode (`@deepseek-ai/dsh-tool-subagent` per host) is also
@@ -250,12 +255,31 @@ Useful when the strict official tool wording/schema is preferred:
 | `sshArgs` | `[]` | extra ssh options |
 | `remoteCommand` | `dsh` | remote executable; an app-bundle install needs an absolute path + env wrapper |
 | `remoteArgs` | `['--profile','acp']` | remote arguments |
+| `remoteShell` | auto from `cwd` | SSH remote shell carrier: `posix` (`sh -c`, with pid probe) or `cmd` (Windows OpenSSH; the command line goes straight to `cmd.exe`). A drive-letter `cwd` selects `cmd` automatically; rarely needs to be written by hand |
 | `profile` / `local` / `localCommand` / `localArgs` | — | run a local `dsh --profile acp` instead of SSH |
 | `spawnCwd` | — | local cwd for the ssh/dsh child (defaults to the harness cwd) |
 | `scrubEnv` | `true` for SSH, `false` for local | remove credential-shaped variables (`*_API_KEY`, `*_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_AUTH`, `*_COOKIE`, `*_SESSION`, `*_DSN`, `DATABASE_URL`, …) from the child environment before spawning; `SSH_AUTH_SOCK` is kept for agent forwarding. A local DSH peer usually needs the parent's provider env, so scrubbing is opt-in there |
 | `env` | `{}` | explicit variables layered **after** scrubbing (an intentional escape hatch). In SSH mode these are only forwarded if the remote `sshd` accepts them (`SendEnv`); local mode passes them directly |
 | `disposeGraceMs` | `5000` local / `10000` SSH | teardown grace per termination tier; capped at `60000` |
 | `expectAgentName` | — | fail the run during `initialize` when the peer's `agentInfo.name` differs (identity/version gate); the observed name is always reported as `agent=` in the diagnostic |
+
+### Windows remote
+
+Use a Windows absolute path for `cwd`; the plugin selects the cmd carrier
+automatically:
+
+```yaml
+- name: win
+  ssh: win-host            # ~/.ssh/config alias or user@host
+  cwd: C:/Users/me/work    # must exist on the remote Windows machine
+  permission: read-only
+```
+
+The remote needs `dsh` on the `PATH` of its SSH session (default
+`remoteCommand: dsh`, resolved by `cmd.exe`); if `PATH` resolves an old build, point
+`remoteCommand` at the desktop `dsh.cmd` absolute path. The cmd carrier does not
+need Git Bash. The remote pid probe is unavailable there; teardown still closes the
+ACP session and ends the ssh child.
 
 ### Relay to a machine the workstation cannot authenticate to
 
@@ -408,8 +432,9 @@ targets use `deny` or a remote sandbox; treat the remote closing message as
   debug-only (see below).
 * The remote workspace path: the manager always injects the parent's absolute
   cwd. For SSH hosts the plugin uses it only when it is a POSIX path; otherwise it
-  falls back to the host's `cwd`. (Without this, a Windows parent's
-  `C:\…` path fails the remote `session/new`.)
+  falls back to the host's `cwd`. When the host `cwd` is a drive-letter path (a
+  Windows remote) it is the only valid value — a POSIX parent path would fail the
+  remote `session/new`.
 * The diagnostic also carries `peerExit` (code/signal/pid) on failures, so a dead
   transport is distinguishable from a remote task failure.
 
@@ -595,13 +620,15 @@ sessions are not deleted (see known limits).
   already threw there and the plugin's own plain-HTML controls ran); on older releases
   the page now uses those self-contained controls instead of the Harness primitives.
 - Verified on the local **DSH 0.2.1-rc.5** desktop install (2026-11-04; Windows
-  desktop parent → Linux, macOS and local `acp` targets). The `0.9.2-rc.5` change
-  affects packaging/display plus that client-bundle conformance fix; the host runtime
-  and protocol code is unchanged from `rc.4`, and the offline suites were re-run on
-  2026-11-05.
+  desktop parent → Linux, macOS and local `acp` targets) and on **DSH 0.2.2-rc.1**
+  (2026-11-05; macOS parent → Windows remote via the cmd carrier; the remote agent
+  executed a Windows-only PowerShell task and returned the closing message).
+  `rc.6` adds the Windows-remote carrier; the rest of the host/protocol code matches
+  `rc.5`, and the offline suites were re-run.
 
 | Plugin | DSH | Status |
 |---|---|---|
+| 0.9.2-rc.6 | `0.2.2-rc.1` | verified (macOS parent → Windows remote via cmd carrier; Windows parent → Linux/macOS targets) — Windows remote support |
 | 0.9.2-rc.5 | `0.2.1-rc.5` | verified (desktop Windows host; Linux/macOS targets) — packaging/display pass |
 | 0.9.2-rc.4 | `0.2.1-rc.3` | verified (desktop Windows host; Linux/macOS targets) |
 | 0.9.2-rc.4 | `0.2.1-rc.2` | verified |

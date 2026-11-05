@@ -35,7 +35,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { buildSpawn, runRemoteTask } from '../lib/acp.js'
+import { buildSpawn, buildWindowsRemoteShell, runRemoteTask } from '../lib/acp.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = path.join(HERE, 'fixtures')
@@ -147,6 +147,35 @@ if (failed > 0) {
   console.error('\nABORT: local spawn was not redirected to the mock peer; refusing to run (would spawn the real dsh).')
   process.exit(1)
 }
+
+// --------------------------------------------------- SSH carrier construction
+// These cases never spawn: they inspect the argv ssh would receive.
+
+const posixSpawn = buildSpawn({ mode: 'ssh', sshHost: 'example-host', cwd: '/srv/work', remoteShell: 'posix' })
+const posixCarrier = posixSpawn.args[posixSpawn.args.length - 1]
+checkTrue('ssh posix: carrier is sh -c', posixCarrier.startsWith('sh -c '), `carrier=${posixCarrier}`)
+checkTrue('ssh posix: carrier keeps pid probe', posixCarrier.includes('DSH_ACP_PID=$$'), `carrier=${posixCarrier}`)
+check('ssh posix: ssh argv head', posixSpawn.args.slice(0, 7), ['-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15'])
+check('ssh posix: destination followed by --', [posixSpawn.args[9], posixSpawn.args[10]], ['example-host', '--'])
+
+const winSpawn = buildSpawn({ mode: 'ssh', sshHost: 'win-host', cwd: 'C:/Users/x', remoteShell: 'cmd' })
+const winCarrier = winSpawn.args[winSpawn.args.length - 1]
+check('ssh cmd: default carrier', winCarrier, 'dsh --profile acp')
+checkTrue('ssh cmd: no sh -c wrapper', winCarrier.startsWith('sh -c ') === false, `carrier=${winCarrier}`)
+checkTrue('ssh cmd: no pid probe', winCarrier.includes('DSH_ACP_PID') === false && winCarrier.includes('>&2') === false, `carrier=${winCarrier}`)
+checkTrue('ssh cmd: keeps -T', winSpawn.args.includes('-T'), `args=${JSON.stringify(winSpawn.args)}`)
+
+const winQuoted = buildSpawn({
+  mode: 'ssh',
+  sshHost: 'win-host',
+  cwd: 'C:/Users/x',
+  remoteShell: 'cmd',
+  remoteCommand: 'C:/Program Files/DSH/dsh.cmd',
+  remoteArgs: ['--profile', 'acp'],
+})
+check('ssh cmd: quoted command path', winQuoted.args[winQuoted.args.length - 1], '"C:/Program Files/DSH/dsh.cmd" --profile acp')
+check('ssh cmd: cmd metacharacters are quoted', buildWindowsRemoteShell({ remoteCommand: 'dsh', remoteArgs: ['--flag=a&b'] }), 'dsh "--flag=a&b"')
+check('ssh cmd: explicit sshBin wins', buildSpawn({ mode: 'ssh', sshHost: 'win-host', cwd: 'C:/Users/x', remoteShell: 'cmd', sshBin: '/opt/ssh' }).command, '/opt/ssh')
 
 // ------------------------------------------------------------------ run helper
 

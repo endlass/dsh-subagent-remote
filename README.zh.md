@@ -8,11 +8,11 @@
 机器上的 DSH `acp` profile 里运行**一次性**子任务，并把远端 agent 的 closing message
 返回本地父会话；本地会话本身不迁移、不对外暴露。
 
-> 候选版本 `0.9.2-rc.5`（打包/展示规范对齐，**无运行时行为变更**）。
-> 兼容窗口：`engines.dsh: ">=0.2.0-rc.2 <0.3.0"`，已在 DSH **0.2.1-rc.5** 上验证
-> （2026-11-04；Windows 桌面父会话 → 一台 Linux 主机、一台 macOS 主机、以及本地
-> `acp` profile）。预发布版本 `0.9.2-rc.3`/`0.9.2-rc.4` 已发布到 npm；`rc.5` 是在其
-> 之上的打包/展示对齐版本。
+> 候选版本 `0.9.2-rc.6`（新增 **Windows 远端** cmd 载体；端到端验证通过）。
+> 兼容窗口：`engines.dsh: ">=0.2.0-rc.2 <0.3.0"`。已在 DSH `0.2.1-rc.5`（Windows
+> 桌面父会话 → 一台 Linux 主机、一台 macOS 主机、以及本地 `acp` profile）和
+> DSH `0.2.2-rc.1`（macOS 父会话 → Windows 远端）上验证。预发布版本
+> `0.9.2-rc.3`/`0.9.2-rc.4` 已发布到 npm。
 
 ## 截图
 
@@ -25,6 +25,9 @@
 - **跨机一次性委派**——本地 DSH 会话把自包含任务委派给另一台机器自己的 DSH 运行时
   （用它的工具、工作区、模型与凭据），只带回远端 closing message；本地会话内容不迁移，
   也不由本插件对网络暴露。
+- **Windows 远端**——主机 `cwd` 是盘符路径（如 `C:/Users/me/work`）时自动改用 cmd
+  载体：远端命令直接交给 Windows OpenSSH 的 `cmd.exe`，不要求目标安装 Git Bash。远端
+  pid 探测在 cmd 载体上不可用，回收降级为 best-effort（ACP 本身不依赖 pid）。
 - **统一的「多主机」工具**——只暴露一个带 `host` 参数的模型工具 `remote_subagent`；
   加一台机器是改配置，不是加一行工具。也支持显式的 legacy 模式（每台主机一行
   `@deepseek-ai/dsh-tool-subagent`）。
@@ -223,12 +226,28 @@ DSH 官方 out-of-process ACP 子智能体后端是刻意 local-only 的：`sess
 | `sshArgs` | `[]` | 额外 ssh 选项 |
 | `remoteCommand` | `dsh` | 远端可执行文件；app-bundle 安装需要绝对路径 + env wrapper |
 | `remoteArgs` | `['--profile','acp']` | 远端参数 |
+| `remoteShell` | 按 `cwd` 自动判定 | SSH 远端 shell 载体：`posix`（`sh -c`，带 pid 探测）或 `cmd`（Windows OpenSSH，命令直接交给 `cmd.exe`）。`cwd` 为盘符路径时自动选 `cmd`；一般无需手写 |
 | `profile` / `local` / `localCommand` / `localArgs` | — | 不起 SSH，改为在本机跑一个 `dsh --profile acp` |
 | `spawnCwd` | — | ssh/dsh 子进程的本地 cwd（默认用 harness cwd） |
 | `scrubEnv` | SSH 默认 `true`，local 默认 `false` | spawn 前从子进程环境里剔除凭证形变量（`*_API_KEY`、`*_KEY`、`*_TOKEN`、`*_SECRET`、`*_PASSWORD`、`*_AUTH`、`*_COOKIE`、`*_SESSION`、`*_DSN`、`DATABASE_URL` …）；保留 `SSH_AUTH_SOCK` 以支持 agent forwarding。本地 DSH peer 通常需要父进程的 provider env，所以本地模式是显式 opt-in |
 | `env` | `{}` | 显式变量，在 scrub **之后**叠加（有意的逃生口）。SSH 模式下只有远端 `sshd` 接受（`SendEnv`）才会转发；本地模式直接传入 |
 | `disposeGraceMs` | local `5000` / SSH `10000` | 每级终止的 teardown 宽限期；上限 `60000` |
 | `expectAgentName` | — | peer 的 `agentInfo.name` 不符时在 `initialize` 阶段失败（身份/版本闸门）；实际观测到的名字始终以 `agent=` 写进诊断 |
+
+### Windows 远端
+
+`cwd` 用 Windows 绝对路径即可，插件会自动选择 cmd 载体：
+
+```yaml
+- name: win
+  ssh: win-host            # ~/.ssh/config 别名或 user@host
+  cwd: C:/Users/me/work    # 必须是远端已存在的 Windows 目录
+  permission: read-only
+```
+
+远端需要 `dsh` 在其 SSH 会话的 `PATH` 上（默认 `remoteCommand: dsh`，由 `cmd.exe` 解析）；
+若 PATH 命中旧版，可把 `remoteCommand` 指到桌面版 `dsh.cmd` 的绝对路径。cmd 载体不依赖
+Git Bash；远端 pid 探测不可用，teardown 仍会关闭 ACP 会话并结束 ssh 子进程。
 
 ### 中继到工作站无法直接认证的机器
 
@@ -357,7 +376,8 @@ shell 写模式扫描；恶意或被攻陷的 peer 可以谎报工具，扫描�
   握手抓到了远端 pid 还会回收它。
 * peer stdout 上的非 JSON 行会被容忍并计数；原始行只在 debug 下可见（见下）。
 * 远端工作区路径：管理器始终注入父会话的绝对 cwd。SSH 主机只在该路径是 POSIX 路径时才用它，
-  否则回退到主机的 `cwd`。（否则 Windows 父会话的 `C:\…` 路径会让远端 `session/new` 失败。）
+  否则回退到主机的 `cwd`；当主机 `cwd` 是盘符路径（Windows 远端）时一律使用主机 `cwd`
+  （否则 POSIX 父会话的路径会让远端 `session/new` 失败）。
 * 失败时诊断还会携带 `peerExit`（code/signal/pid），因此传输死掉和远端任务失败可区分。
 
 ## 诊断
@@ -512,11 +532,13 @@ dsh plugin --profile <profile> remove dsh-subagent-remote
   HTML 控件）；在仍带 primitives 的旧版本上，页面改用插件自带的这套控件，功能等价、字体
   样式走插件自己的设计 token。
 - 已在本机 **DSH 0.2.1-rc.5** 桌面安装上验证（2026-11-04；Windows 桌面父会话 → Linux、
-  macOS 与本地 `acp` 目标）。`0.9.2-rc.5` 本身改的是打包/展示，外加这条 client 包的
-  规范修复；Host 运行时与协议代码与 `rc.4` 完全相同，离线套件于 2026-11-05 复跑。
+  macOS 与本地 `acp` 目标），并在 **DSH 0.2.2-rc.1** 上验证 macOS 父会话 → Windows 远端
+  （2026-11-05，cmd 载体；远端执行 Windows-only PowerShell 任务并回传 closing message）。
+  `rc.6` 新增 Windows 远端载体；宿主/协议其余代码与 `rc.5` 一致，离线套件复跑通过。
 
 | 插件 | DSH | 状态 |
 |---|---|---|
+| 0.9.2-rc.6 | `0.2.2-rc.1` | 已验证（macOS 父会话 → Windows 远端，cmd 载体；Windows 父会话 → Linux/macOS 目标）— Windows 远端支持 |
 | 0.9.2-rc.5 | `0.2.1-rc.5` | 已验证（Windows 桌面父会话；Linux/macOS 目标）——打包/展示 pass |
 | 0.9.2-rc.4 | `0.2.1-rc.3` | 已验证（Windows 桌面父会话；Linux/macOS 目标） |
 | 0.9.2-rc.4 | `0.2.1-rc.2` | 已验证 |

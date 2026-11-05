@@ -46,6 +46,9 @@ export const inject = ['subagents']
 /** Accepted permission modes; anything else is a config error, not a silent fallback. */
 export const PERMISSION_MODES = Object.freeze(['read-only', 'ask', 'deny', 'auto'])
 
+/** Accepted remote shell carriers; anything else is a config error. */
+export const REMOTE_SHELLS = Object.freeze(['posix', 'cmd'])
+
 /** Machine-readable failure categories (mirrors the official backends' fixed sets). */
 export const FAILURE_CATEGORIES = Object.freeze([
   'invalid-request',
@@ -160,6 +163,16 @@ function assertSafeSshArgs(args, label) {
 }
 
 /**
+ * Windows absolute path check used by remoteShell auto-detection and by the
+ * session-cwd choice (a Windows workspace cannot accept the parent's POSIX cwd).
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isWindowsAbsolutePath(value) {
+  return typeof value === 'string' && /^[A-Za-z]:[\\/]/.test(value)
+}
+
+/**
  * Validate one optional string field.
  * @param {string} where field path for the diagnostic
  * @param {unknown} value
@@ -238,6 +251,17 @@ export function normalizeHosts(config) {
     if (typeof entry.cwd !== 'string' || !(entry.cwd.startsWith('/') || /^[A-Za-z]:[\\/]/.test(entry.cwd))) {
       throw new Error(`dsh-subagent-remote: hosts[${index}].cwd must be an absolute path`)
     }
+    // POSIX remotes get the `sh -c` carrier (pid probe on stderr); Windows
+    // remotes must use the cmd carrier. A drive-letter workspace is a safe
+    // auto-detection signal; an explicit remoteShell overrides it.
+    const remoteShell = local
+      ? 'posix'
+      : (entry.remoteShell === undefined
+          ? (isWindowsAbsolutePath(entry.cwd) ? 'cmd' : 'posix')
+          : entry.remoteShell)
+    if (!local && !REMOTE_SHELLS.includes(remoteShell)) {
+      throw new Error(`dsh-subagent-remote: hosts[${index}].remoteShell must be one of ${REMOTE_SHELLS.join('|')} (got ${JSON.stringify(remoteShell)})`)
+    }
     const permission = entry.permission === undefined ? 'read-only' : entry.permission
     if (!PERMISSION_MODES.includes(permission)) {
       throw new Error(`dsh-subagent-remote: hosts[${index}].permission must be one of ${PERMISSION_MODES.join('|')} (got ${JSON.stringify(permission)})`)
@@ -266,6 +290,7 @@ export function normalizeHosts(config) {
       sshArgs: assertSafeSshArgs(optionalStringArray(`hosts[${index}].sshArgs`, entry.sshArgs), `hosts[${index}].sshArgs`),
       remoteCommand: optionalString(`hosts[${index}].remoteCommand`, entry.remoteCommand),
       remoteArgs: optionalStringArray(`hosts[${index}].remoteArgs`, entry.remoteArgs),
+      remoteShell,
       profile: optionalString(`hosts[${index}].profile`, entry.profile),
       localCommand: optionalString(`hosts[${index}].localCommand`, entry.localCommand),
       localArgs: optionalStringArray(`hosts[${index}].localArgs`, entry.localArgs),
@@ -306,6 +331,10 @@ export function normalizeHosts(config) {
  * Windows parent to a Linux host fails `session/new` with
  * "cwd must be an absolute path" (observed in the first end-to-end run).
  *
+ * A Windows **remote** has the mirror problem: a POSIX parent sends
+ * `/private/tmp`, which looks usable but does not exist on the remote. When the
+ * configured cwd is a drive-letter path, it is the only valid session cwd.
+ *
  * @param {string|undefined} requested `request.cwd` from the manager
  * @param {string} fallback host-configured remote cwd
  * @param {'ssh'|'local'} mode
@@ -314,6 +343,7 @@ export function normalizeHosts(config) {
 export function pickSessionCwd(requested, fallback, mode) {
   if (typeof requested !== 'string' || requested.length === 0) return fallback
   if (mode === 'local') return requested
+  if (isWindowsAbsolutePath(fallback)) return fallback
   const looksPosix = requested.startsWith('/') && !/^[A-Za-z]:/.test(requested)
   return looksPosix ? requested : fallback
 }
@@ -809,7 +839,7 @@ export function apply(ctx, config) {
   )
   for (const host of initialHosts) {
     ctx.logger?.info?.(
-      `[dsh-subagent-remote] ${host.disabled === true ? '(disabled) ' : ''}provider "${host.provider}" -> ${host.mode === 'local' ? `local dsh (${host.profile ?? 'acp'})` : `ssh ${host.sshHost}`} cwd=${host.cwd} permission=${host.permission} remoteSession=${host.remoteSession ?? 'close'} scrubEnv=${host.scrubEnv}`,
+      `[dsh-subagent-remote] ${host.disabled === true ? '(disabled) ' : ''}provider "${host.provider}" -> ${host.mode === 'local' ? `local dsh (${host.profile ?? 'acp'})` : `ssh ${host.sshHost}`} cwd=${host.cwd} remoteShell=${host.remoteShell} permission=${host.permission} remoteSession=${host.remoteSession ?? 'close'} scrubEnv=${host.scrubEnv}`,
     )
   }
 

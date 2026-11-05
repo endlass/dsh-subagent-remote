@@ -3,6 +3,33 @@
 All notable changes to `dsh-subagent-remote` are documented here. Versions use
 semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
+## 0.9.2-rc.6
+
+Windows remote support (cmd carrier).
+
+- Windows OpenSSH endpoints (`hosts[].cwd` as a drive-letter path, e.g.
+  `C:/Users/me/work`) now use a `cmd.exe`-safe carrier. `cmd.exe` does not honour
+  POSIX single quotes and treated the POSIX pid probe's `>&2` as a real
+  redirection, moving the ACP stdout stream to stderr; `remoteCommand` /
+  `remoteArgs` are now handed straight to `cmd.exe` (still through `ssh`), so no
+  Git Bash is required on the target.
+- New optional host field `remoteShell: "posix" | "cmd"`, auto-selected from the
+  configured `cwd` (drive letter → `cmd`, otherwise `posix`). It is included in the
+  boot log and can be overridden for edge cases.
+- `pickSessionCwd()` treats a drive-letter host workspace as authoritative: a
+  POSIX parent cwd such as `/private/tmp` is no longer sent to a Windows remote
+  `session/new` (which failed with `working-directory: directory does not exist`).
+  Windows parent → POSIX remote keeps the previous fallback.
+- Remote pid reaping is best-effort on the cmd carrier (the POSIX `$$` probe does
+  not exist there); ACP itself does not need it, and teardown still closes the
+  session and the ssh child.
+- Verified end-to-end on DSH `0.2.2-rc.1`: macOS parent → Windows 10/11 remote over
+  SSH; the remote agent executed a Windows-only PowerShell task and returned the
+  closing message (~30 s, 4 `pwsh` tool calls, `permission: auto`).
+- Tests: `test/transport-selftest.mjs` asserts the posix/cmd ssh carriers (argv,
+  quoting, no pid probe on cmd); `test/config-selftest.mjs` covers Windows
+  auto-detection, explicit override and the Windows cwd fallback.
+
 ## 0.9.2-rc.5
 
 Packaging and display-convention alignment; **no intended runtime behaviour change**.

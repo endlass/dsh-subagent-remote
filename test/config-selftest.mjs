@@ -14,7 +14,9 @@ import {
   classifyFailureFacts,
   renderDiagnostic,
   PERMISSION_MODES,
+  REMOTE_SHELLS,
   FAILURE_CATEGORIES,
+  isWindowsAbsolutePath,
 } from '../index.js'
 import { decodePeerStderr, resolveLocalDsh, scrubEnv } from '../lib/acp.js'
 import {
@@ -67,6 +69,18 @@ check('single host provider default', single[0].provider, 'remote-host0')
 check('single host mode', single[0].mode, 'ssh')
 check('single host permission default', single[0].permission, 'read-only')
 check('single host timeout default', single[0].timeoutMs, 600000)
+check('single host remoteShell auto posix', single[0].remoteShell, 'posix')
+
+// --- Windows remote auto-detection / explicit carrier ---------------------
+check('remote shells', REMOTE_SHELLS, ['posix', 'cmd'])
+check('windows path helper accepts drive letter', isWindowsAbsolutePath('C:/Users/x'), true)
+check('windows path helper rejects posix', isWindowsAbsolutePath('/srv/work'), false)
+check('windows cwd auto-selects cmd', normalizeHosts({ ssh: 'example-host', cwd: 'C:/Users/x' })[0].remoteShell, 'cmd')
+check('windows cwd backslash auto-selects cmd', normalizeHosts({ ssh: 'example-host', cwd: 'C:\\Users\\x' })[0].remoteShell, 'cmd')
+check('posix cwd auto-selects posix', normalizeHosts({ ssh: 'example-host', cwd: '/srv/work' })[0].remoteShell, 'posix')
+check('explicit remoteShell wins', normalizeHosts({ ssh: 'example-host', cwd: '/srv/work', remoteShell: 'cmd' })[0].remoteShell, 'cmd')
+check('explicit posix on windows path', normalizeHosts({ ssh: 'example-host', cwd: 'C:/Users/x', remoteShell: 'posix' })[0].remoteShell, 'posix')
+expectThrow('bad remoteShell', () => normalizeHosts({ ssh: 'example-host', cwd: '/srv/work', remoteShell: 'sh' }), /remoteShell must be one of/)
 
 // --- hosts array ----------------------------------------------------------
 const hosts = normalizeHosts({
@@ -105,6 +119,7 @@ expectThrow('non-object entry', () => normalizeHosts({ hosts: ['nope'] }), /must
 // --- cwd mapping ---------------------------------------------------------
 check('ssh keeps posix cwd', pickSessionCwd('/srv/work/work', '/srv/work', 'ssh'), '/srv/work/work')
 check('ssh rejects windows cwd', pickSessionCwd('C:\\Users\\x', '/srv/work', 'ssh'), '/srv/work')
+check('windows remote keeps configured cwd', pickSessionCwd('/private/tmp', 'C:/Users/x', 'ssh'), 'C:/Users/x')
 check('local keeps windows cwd', pickSessionCwd('C:\\Users\\x', '/srv/work', 'local'), 'C:\\Users\\x')
 check('undefined falls back', pickSessionCwd(undefined, '/srv/work', 'ssh'), '/srv/work')
 
