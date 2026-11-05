@@ -8,11 +8,11 @@
 机器上的 DSH `acp` profile 里运行**一次性**子任务，并把远端 agent 的 closing message
 返回本地父会话；本地会话本身不迁移、不对外暴露。
 
-> 候选版本 `0.9.2-rc.6`（新增 **Windows 远端** cmd 载体；端到端验证通过）。
+> 候选版本 `0.9.2-rc.7`（**会话顶部运行指示器** + Windows 远端）。
 > 兼容窗口：`engines.dsh: ">=0.2.0-rc.2 <0.3.0"`。已在 DSH `0.2.1-rc.5`（Windows
 > 桌面父会话 → 一台 Linux 主机、一台 macOS 主机、以及本地 `acp` profile）和
-> DSH `0.2.2-rc.1`（macOS 父会话 → Windows 远端）上验证。预发布版本
-> `0.9.2-rc.3`/`0.9.2-rc.4` 已发布到 npm。
+> DSH `0.2.2-rc.1`（macOS 父会话 → Windows 远端；Web UI 顶部指示器 running → done）
+> 上验证。预发布版本 `0.9.2-rc.3`/`0.9.2-rc.4` 已发布到 npm。
 
 ## 截图
 
@@ -37,6 +37,8 @@
 - **配置页 + 热加载**——插件页可列出主机、实测 SSH 连通性、编辑字段覆盖、设置/清除默认
   主机；页面写入落到插件自己的 JSON overlay（profile patch 之上的增量）并立即生效，无需重启。
 - **会话内切换主机**——`/remote-host` 列出主机并切换当前会话使用的目标主机。
+- **会话顶部运行指示器**——派发后在会话 header（官方子智能体、后台任务之后）显示远端
+  主机、运行状态与耗时；完成后短暂保留耗时、工具次数与结果摘要，点击展开详情。
 - **结构化诊断**——固定失败事实（`stage=`/`category=`）、内置提示、权限决定、`agent=`、
   env-scrub 与 peer 退出事实；远端原始文本默认只在 debug 开关下出现。
 - **零依赖 ESM Cordis 插件**——`index.js` + `lib/*`，无第三方依赖，全部测试可离线跑。
@@ -336,6 +338,16 @@ patch **之上的增量**，从不改写 patch 本身：
 /remote-host reset      # 清除会话选择
 ```
 
+### 会话顶部指示器
+
+Web/Desktop 部署下，派发远端任务后会话头部会出现一个 `⇄ <host>` 指示器，位置在官方
+「子智能体」与「后台任务」之后（`conversation.session.header.actions`，slot order 30）：
+
+- **运行中**：显示主机、状态、已运行秒数；展开可看 endpoint、权限、工具次数和最近工具。
+- **完成 / 失败 / 取消**：保留约 10 分钟，显示耗时、工具次数、结果摘要（截断）与错误类别。
+- 数据来自 Host 侧内存注册表（`lib/runs.js`，上限 64 条），不写会话事件；DSH 重启后清空。
+- Headless / ACP 部署没有 `connection` 插槽，指示器不出现，但委派、诊断与结果不受影响。
+
 ## 权限模型
 
 需要审批的远端工具调用之前，ACP 会先问客户端（`session/request_permission`）。DSH 的 ACP
@@ -534,10 +546,12 @@ dsh plugin --profile <profile> remove dsh-subagent-remote
 - 已在本机 **DSH 0.2.1-rc.5** 桌面安装上验证（2026-11-04；Windows 桌面父会话 → Linux、
   macOS 与本地 `acp` 目标），并在 **DSH 0.2.2-rc.1** 上验证 macOS 父会话 → Windows 远端
   （2026-11-05，cmd 载体；远端执行 Windows-only PowerShell 任务并回传 closing message）。
-  `rc.6` 新增 Windows 远端载体；宿主/协议其余代码与 `rc.5` 一致，离线套件复跑通过。
+  同一版本上验证了 Web UI 的会话顶部指示器：位置在官方「N subagents」之后，running →
+  done 状态与详情菜单均正常。`rc.7` 新增该指示器，委派协议与 `rc.6` 一致，离线套件复跑通过。
 
 | 插件 | DSH | 状态 |
 |---|---|---|
+| 0.9.2-rc.7 | `0.2.2-rc.1` | 已验证（macOS 父会话 → Windows 远端；Web UI 会话顶部指示器 running → done）— 会话顶部运行指示器 |
 | 0.9.2-rc.6 | `0.2.2-rc.1` | 已验证（macOS 父会话 → Windows 远端，cmd 载体；Windows 父会话 → Linux/macOS 目标）— Windows 远端支持 |
 | 0.9.2-rc.5 | `0.2.1-rc.5` | 已验证（Windows 桌面父会话；Linux/macOS 目标）——打包/展示 pass |
 | 0.9.2-rc.4 | `0.2.1-rc.3` | 已验证（Windows 桌面父会话；Linux/macOS 目标） |

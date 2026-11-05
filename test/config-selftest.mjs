@@ -17,6 +17,7 @@ import {
   REMOTE_SHELLS,
   FAILURE_CATEGORIES,
   isWindowsAbsolutePath,
+  parentSessionIdOf,
 } from '../index.js'
 import { decodePeerStderr, resolveLocalDsh, scrubEnv } from '../lib/acp.js'
 import {
@@ -81,6 +82,12 @@ check('posix cwd auto-selects posix', normalizeHosts({ ssh: 'example-host', cwd:
 check('explicit remoteShell wins', normalizeHosts({ ssh: 'example-host', cwd: '/srv/work', remoteShell: 'cmd' })[0].remoteShell, 'cmd')
 check('explicit posix on windows path', normalizeHosts({ ssh: 'example-host', cwd: 'C:/Users/x', remoteShell: 'posix' })[0].remoteShell, 'posix')
 expectThrow('bad remoteShell', () => normalizeHosts({ ssh: 'example-host', cwd: '/srv/work', remoteShell: 'sh' }), /remoteShell must be one of/)
+
+// --- session-header indicator identity ------------------------------------
+check('parent session id from agent session', parentSessionIdOf({ parent: { session: { id: 'session-1' } } }), 'session-1')
+check('parent session id fallback field', parentSessionIdOf({ parent: { sessionId: 'session-2' } }), 'session-2')
+check('parent session id missing', parentSessionIdOf({}), null)
+check('parent session id non-object', parentSessionIdOf(null), null)
 
 // --- hosts array ----------------------------------------------------------
 const hosts = normalizeHosts({

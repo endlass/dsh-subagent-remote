@@ -27,6 +27,7 @@ import { runRemoteTask } from './lib/acp.js'
 import { createPermissionDecider, requestRunPreAuthorization } from './lib/policy.js'
 import { buildUnifiedRemoteTool } from './lib/tool.js'
 import { RPC_PATH, applyHostOverlay, readState, registerSettingsRpc, writeState } from './lib/settings.js'
+import { createRunRegistry } from './lib/runs.js'
 
 /** Out-of-process backends cannot honor parent-enforced start features. */
 const CAPABILITIES = Object.freeze({
@@ -170,6 +171,24 @@ function assertSafeSshArgs(args, label) {
  */
 export function isWindowsAbsolutePath(value) {
   return typeof value === 'string' && /^[A-Za-z]:[\\/]/.test(value)
+}
+
+/**
+ * Parent session id for the session-header run indicator.
+ *
+ * The provider `start(request)` receives the exact live parent Agent
+ * (`request.parent`), whose durable session carries the id. Older/alternate
+ * shapes are tolerated so the indicator degrades to "unscoped" rather than
+ * throwing inside the provider seam.
+ * @param {unknown} request provider request
+ * @returns {string|null}
+ */
+export function parentSessionIdOf(request) {
+  if (request === null || typeof request !== 'object') return null
+  const parent = request.parent
+  if (parent === null || typeof parent !== 'object') return null
+  const id = parent.session?.id ?? parent.sessionId ?? parent.session?.header?.id
+  return typeof id === 'string' && id.length > 0 ? id : null
 }
 
 /**
@@ -547,7 +566,7 @@ export function renderDiagnostic(facts) {
  * @param {object} request manager-built subagent request
  * @returns {Promise<{id: string, result: Promise<object>, dispose: () => Promise<void>}>}
  */
-async function startRemoteRun(ctx, host, request) {
+async function startRemoteRun(ctx, host, request, runs) {
   const id = randomUUID()
   const controller = new AbortController()
   const debug = debugDiagnosticsEnabled()
@@ -569,6 +588,19 @@ async function startRemoteRun(ctx, host, request) {
     durationMs: 0,
     debug,
   }
+
+  // Session-header indicator state. The record is per process and bounded by
+  // the registry's grace period; it never feeds the conversation itself.
+  runs?.begin({
+    id,
+    sessionId: parentSessionIdOf(request),
+    host: host.name,
+    provider: host.provider,
+    endpoint: endpointLabel,
+    cwd,
+    permission: host.permission,
+    remoteSession: host.remoteSession ?? 'close',
+  })
 
   const settle = (outcome) => {
     if (settled) return
@@ -596,6 +628,7 @@ async function startRemoteRun(ctx, host, request) {
       }),
     })
     ctx.logger?.warn?.(`[dsh-subagent-remote] ${host.provider}: rejected delegation: ${message}`)
+    runs?.finish(id, { status: 'error', stopReason: 'error', error: message, text: '', durationMs: 0 })
     return { id, result, dispose: () => Promise.resolve() }
   }
 
@@ -610,6 +643,7 @@ async function startRemoteRun(ctx, host, request) {
   // `ask` must decide at dispatch time: the approval seam is turn-enclosed and
   // the remote run outlives the delegating turn (see lib/policy.js).
   if (host.permission === 'ask') {
+    runs?.update(id, { phase: 'authorizing' })
     facts.preAuth = await requestRunPreAuthorization({
       ctx,
       request,
@@ -627,6 +661,7 @@ async function startRemoteRun(ctx, host, request) {
   })
 
   taskPromise = (async () => {
+    runs?.update(id, { phase: 'running' })
     const outcome = await runRemoteTask({
       endpoint: { ...host, cwd },
       promptText,
@@ -639,11 +674,22 @@ async function startRemoteRun(ctx, host, request) {
       disposeGraceMs: host.disposeGraceMs,
       expectAgentName: host.expectAgentName,
       closeRemoteSession: host.remoteSession !== 'keep',
+      onUpdate: (kind, update) => runs?.progress(id, kind, update),
     })
     Object.assign(facts, outcome)
     const output = outcome.text.length > 0 ? [{ type: 'text', text: outcome.text }] : []
     const failed = outcome.stopReason === 'error' || outcome.error !== undefined
     const classified = failed ? classifyFailureFacts(outcome) : undefined
+    runs?.finish(id, {
+      status: outcome.stopReason === 'completed' ? 'completed' : outcome.stopReason === 'aborted' ? 'aborted' : 'error',
+      stopReason: outcome.stopReason,
+      durationMs: outcome.durationMs,
+      toolCalls: Array.isArray(outcome.toolCalls) ? outcome.toolCalls.length : undefined,
+      text: outcome.text,
+      remoteSessionId: outcome.remoteSessionId ?? null,
+      usage: Array.isArray(outcome.usage) && outcome.usage.length > 0 ? outcome.usage[outcome.usage.length - 1] : null,
+      error: failed ? (outcome.error ?? classified?.category ?? 'remote run failed') : null,
+    })
     return {
       output,
       stopReason: outcome.stopReason,
@@ -674,6 +720,7 @@ async function startRemoteRun(ctx, host, request) {
         }),
       }
       settle(failed)
+      runs?.finish(id, { status: 'error', stopReason: 'error', error: message, text: '' })
       return failed
     },
   )
@@ -739,6 +786,7 @@ export function apply(ctx, config) {
   const liveHosts = new Map()
   const providerDisposers = new Map()
   const runtime = { selection: undefined, toolCtx: null, toolDisposer: null }
+  const runRegistry = createRunRegistry()
 
   /**
    * (Re-)register the model-facing tool so its host enum follows the live hosts.
@@ -774,7 +822,7 @@ export function apply(ctx, config) {
         if (live === undefined) {
           throw new Error(`dsh-subagent-remote: host "${host.name}" is no longer configured`)
         }
-        return startRemoteRun(ctx, live, request)
+        return startRemoteRun(ctx, live, request, runRegistry)
       },
     })
     providerDisposers.set(host.name, { providerName: host.provider, dispose })
@@ -868,6 +916,7 @@ export function apply(ctx, config) {
       configDefault,
       getState: () => readState(),
       setState: (next) => writeState(next),
+      getRuns: (sessionId) => runRegistry.list(sessionId),
     })
     if (typeof disposer === 'function') {
       ctx.logger?.info?.(`[dsh-subagent-remote] settings RPC registered at ${RPC_PATH}`)

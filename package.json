@@ -1,6 +1,6 @@
 {
   "name": "dsh-subagent-remote",
-  "version": "0.9.2-rc.6",
+  "version": "0.9.2-rc.7",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -39,8 +39,8 @@
     "cordis.patch.yml"
   ],
   "scripts": {
-    "check": "node --check index.js && node --check lib/acp.js && node --check lib/policy.js && node --check lib/tool.js && node --check lib/settings.js && node --check lib/client.js",
-    "test": "node test/policy-selftest.mjs && node test/tool-selftest.mjs && node test/config-selftest.mjs && node test/settings-selftest.mjs && node test/transport-selftest.mjs && node test/client-contract-selftest.mjs",
+    "check": "node --check index.js && node --check lib/acp.js && node --check lib/policy.js && node --check lib/tool.js && node --check lib/settings.js && node --check lib/runs.js && node --check lib/client.js",
+    "test": "node test/policy-selftest.mjs && node test/tool-selftest.mjs && node test/config-selftest.mjs && node test/settings-selftest.mjs && node test/runs-selftest.mjs && node test/transport-selftest.mjs && node test/client-contract-selftest.mjs",
     "test:policy": "node test/policy-selftest.mjs",
     "test:tool": "node test/tool-selftest.mjs",
     "test:config": "node test/config-selftest.mjs",

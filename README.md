@@ -9,11 +9,12 @@ issued from a local DSH session runs one **one-shot** subagent task on a DSH `ac
 profile living on another machine, over SSH, and returns that remote agent's
 closing message to the local parent session.
 
-> Release candidate `0.9.2-rc.6` (new **Windows-remote** cmd carrier; verified
-> end-to-end). Compatibility window: `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`.
-> Verified on DSH `0.2.1-rc.5` (Windows desktop parent → a Linux host, a macOS host,
-> and a local `acp` profile) and DSH `0.2.2-rc.1` (macOS parent → Windows remote).
-> Pre-release builds `0.9.2-rc.3`/`0.9.2-rc.4` are published on npm.
+> Release candidate `0.9.2-rc.7` (**session-header run indicator** + Windows
+> remote). Compatibility window: `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`. Verified on
+> DSH `0.2.1-rc.5` (Windows desktop parent → a Linux host, a macOS host, and a local
+> `acp` profile) and DSH `0.2.2-rc.1` (macOS parent → Windows remote; Web UI
+> indicator running → done). Pre-release builds `0.9.2-rc.3`/`0.9.2-rc.4` are
+> published on npm.
 
 ## Screenshots
 
@@ -45,6 +46,9 @@ closing message to the local parent session.
   immediately — no restart for page edits.
 - **Conversational host switching** — `/remote-host` lists hosts and switches the
   current session's target host.
+- **Session-header run indicator** — after a dispatch, the conversation header shows
+  the remote host, status and elapsed time (after the official subagent/background
+  indicators); settled runs keep a short result/tool summary that expands into detail.
 - **Structured diagnostics** — fixed failure facts (`stage=`/`category=`), canned
   hints, permission decisions, `agent=`, env-scrub and peer-exit facts; raw remote
   text stays debug-gated.
@@ -382,6 +386,21 @@ The same switcher is available conversationally:
 /remote-host reset      # clear the session selection
 ```
 
+### Session-header run indicator
+
+On Web/Desktop deployments a compact `⇄ <host>` indicator appears in the conversation
+header after a remote dispatch, positioned after the official subagent and background-job
+surfaces (`conversation.session.header.actions`, slot order 30):
+
+- **Running**: host, status and elapsed seconds; expand for endpoint, permission, tool
+  count and the last tool.
+- **Completed / failed / cancelled**: retained for ~10 minutes with duration, tool count,
+  a truncated result preview and the error category.
+- Data comes from an in-memory Host registry (`lib/runs.js`, capped at 64 records); it
+  never writes session events and is cleared on a DSH restart.
+- Headless/ACP deployments have no `connection` slot, so the indicator is absent while
+  delegation, diagnostics and results are unaffected.
+
 ## Permission model
 
 ACP asks the client (`session/request_permission`) before a remote tool call that
@@ -622,12 +641,14 @@ sessions are not deleted (see known limits).
 - Verified on the local **DSH 0.2.1-rc.5** desktop install (2026-11-04; Windows
   desktop parent → Linux, macOS and local `acp` targets) and on **DSH 0.2.2-rc.1**
   (2026-11-05; macOS parent → Windows remote via the cmd carrier; the remote agent
-  executed a Windows-only PowerShell task and returned the closing message).
-  `rc.6` adds the Windows-remote carrier; the rest of the host/protocol code matches
-  `rc.5`, and the offline suites were re-run.
+  executed a Windows-only PowerShell task and returned the closing message). The same
+  build verified the Web UI session-header indicator after the official “N subagents”
+  chip, including running → done and the detail menu. `rc.7` adds that indicator; the
+  dispatch protocol matches `rc.6`, and the offline suites were re-run.
 
 | Plugin | DSH | Status |
 |---|---|---|
+| 0.9.2-rc.7 | `0.2.2-rc.1` | verified (macOS parent → Windows remote; Web UI session-header indicator running → done) — session-header run indicator |
 | 0.9.2-rc.6 | `0.2.2-rc.1` | verified (macOS parent → Windows remote via cmd carrier; Windows parent → Linux/macOS targets) — Windows remote support |
 | 0.9.2-rc.5 | `0.2.1-rc.5` | verified (desktop Windows host; Linux/macOS targets) — packaging/display pass |
 | 0.9.2-rc.4 | `0.2.1-rc.3` | verified (desktop Windows host; Linux/macOS targets) |

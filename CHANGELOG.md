@@ -3,6 +3,30 @@
 All notable changes to `dsh-subagent-remote` are documented here. Versions use
 semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
+## 0.9.2-rc.7
+
+Session-header remote-run indicator.
+
+- Host: `lib/runs.js` in-memory run registry (running/completed/error/aborted with
+  host, endpoint, cwd, permission, tool count, last tool/status, usage, result
+  preview and remote session id), bounded to 64 records and ~10 minutes after settle.
+- Host: `startRemoteRun()` records every delegation (including pre-spawn validation
+  errors) and settles it on completion/error/abort; `parentSessionIdOf()` maps the
+  provider request to the durable parent session for session-scoped display.
+- Transport: `runRemoteTask()` accepts an optional `onUpdate(kind, update)` observer;
+  ACP `session/update` frames stream into the registry without affecting the run.
+- Settings RPC: new `runs` method (`{ sessionId }`) returns the session's records.
+- Client: compact indicator registered in `conversation.session.header.actions` at
+  order 30 — after the official subagent catalog (10) and background-job list (20).
+  Shows host/status/elapsed; a portal-rendered detail menu lists endpoint, permission,
+  tool count/last tool, result preview and error; hidden when there are no runs; polls
+  the host RPC every 2 s.
+- Tests: `test/runs-selftest.mjs`; `parentSessionIdOf()` cases in the config selftest;
+  the `onUpdate` observer case in the transport selftest (114/114 checks).
+- Verified on DSH `0.2.2-rc.1` Web UI: macOS parent → Windows remote; the indicator
+  appeared after the official “N subagents” chip and showed running → done, with the
+  detail menu.
+
 ## 0.9.2-rc.6
 
 Windows remote support (cmd carrier).

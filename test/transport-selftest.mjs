@@ -443,6 +443,18 @@ async function caseAgentMismatch() {
   check('agent-mismatch: observed agent still recorded', result.agentInfo?.name, 'mock-acp-peer')
 }
 
+async function caseOnUpdate() {
+  const seen = []
+  const result = await runPeer('permission', {
+    decide: async () => ({ allow: true, reason: 'selftest onUpdate', source: 'selftest' }),
+    onUpdate: (kind) => { seen.push(kind) },
+  })
+  check('onUpdate: run still completes', result.stopReason, 'completed')
+  checkTrue('onUpdate: saw a tool_call update', seen.includes('tool_call'), `seen=${JSON.stringify(seen)}`)
+  check('onUpdate: observer never changes the answer', result.text, 'permission option=allow-once')
+  await auditPeerProcess(result, 'onUpdate', false)
+}
+
 // ---------------------------------------------------------------------- runner
 
 const cases = [
@@ -459,6 +471,7 @@ const cases = [
   ['session-keep', 'ok', caseSessionKept],
   ['env-scrub', 'env', caseEnvScrub],
   ['agent-mismatch', 'ok', caseAgentMismatch],
+  ['onUpdate', 'permission', caseOnUpdate],
 ]
 
 for (const [name, mode, run] of cases) {
