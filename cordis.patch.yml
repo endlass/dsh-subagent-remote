@@ -8,4 +8,8 @@
 - insert:
     - id: subagent-remote
       name: dsh-subagent-remote
-      config: {}
+      # Enable the unified model tool by default. Hosts are added from the
+      # plugin page (JSON overlay); with zero hosts the tool stays unregistered,
+      # and it registers lazily once the first host exists.
+      config:
+        tool: {}

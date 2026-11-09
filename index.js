@@ -28,6 +28,7 @@ import { createPermissionDecider, requestRunPreAuthorization } from './lib/polic
 import { buildUnifiedRemoteTool } from './lib/tool.js'
 import { RPC_PATH, applyHostOverlay, readState, registerSettingsRpc, writeState } from './lib/settings.js'
 import { createRunRegistry } from './lib/runs.js'
+import { recoverJournal, saveJournal } from './lib/journal.js'
 
 /** Out-of-process backends cannot honor parent-enforced start features. */
 const CAPABILITIES = Object.freeze({
@@ -192,6 +193,37 @@ export function parentSessionIdOf(request) {
 }
 
 /**
+ * Build the system-prompt section that makes every new session aware of the
+ * remote-subagent capability without the user having to name the plugin.
+ *
+ * Dynamic on purpose: the registered section callback reads the live host
+ * registry, so adding/removing hosts from the plugin page changes the next
+ * prompt assembly. The text is intentionally short and action-oriented: the
+ * model needs "when to use" plus the host capabilities, not a full manual.
+ *
+ * @param {object[]} hosts live normalized hosts
+ * @param {string} [toolName]
+ * @returns {string} empty when no host is enabled
+ */
+export function buildRemoteSubagentSection(hosts, toolName = 'remote_subagent') {
+  const enabled = (Array.isArray(hosts) ? hosts : []).filter((host) => host !== null && typeof host === 'object' && host.disabled !== true)
+  if (enabled.length === 0) return ''
+  const lines = enabled.map((host) => {
+    const parts = [`${host.name} — ${host.remoteShell === 'cmd' ? 'Windows' : 'POSIX'} remote`, `cwd ${host.cwd}`]
+    if (typeof host.description === 'string' && host.description.length > 0) parts.push(host.description)
+    if (typeof host.permission === 'string' && host.permission.length > 0) parts.push(`permission ${host.permission}`)
+    return `- ${parts.join('; ')}`
+  })
+  return [
+    `You can delegate one one-shot task to another machine with the ${toolName} tool.`,
+    'Remote hosts:',
+    ...lines,
+    'Use this tool when the task needs one of those machines (its OS, shell, tools, workspace, files, models, or credentials), when the user names a host or asks to run/offload something there, or when the local session cannot satisfy the request. Prefer this tool over ad-hoc local ssh/bash commands to these hosts: it applies the configured permission policy, records diagnostics, and shows the run in the session header. Do not use it for work the local machine can do.',
+    'The remote agent cannot see this conversation: include every fact and constraint it needs. This backend does not accept follow-up messages. After dispatching, do not poll (no list_agents/job_list), sleep, or start unrelated work just to wait: end the turn and wait for the runtime completion notice, which starts the next turn. Do not call send_message or any follow-up control for this one-shot remote subagent. Omit the host to use the session default (/remote-host to switch).',
+  ].join('\n')
+}
+
+/**
  * Validate one optional string field.
  * @param {string} where field path for the diagnostic
  * @param {unknown} value
@@ -303,6 +335,7 @@ export function normalizeHosts(config) {
     hosts.push({
       name: label,
       provider: typeof entry.provider === 'string' && entry.provider.length > 0 ? entry.provider : `remote-${label}`,
+      description: optionalString(`hosts[${index}].description`, entry.description),
       mode: local ? 'local' : 'ssh',
       sshHost: local ? undefined : assertSshDestination(entry.ssh, `hosts[${index}].ssh`),
       sshBin: optionalString(`hosts[${index}].sshBin`, entry.sshBin),
@@ -566,7 +599,7 @@ export function renderDiagnostic(facts) {
  * @param {object} request manager-built subagent request
  * @returns {Promise<{id: string, result: Promise<object>, dispose: () => Promise<void>}>}
  */
-async function startRemoteRun(ctx, host, request, runs) {
+async function startRemoteRun(ctx, host, request, runs, onChange) {
   const id = randomUUID()
   const controller = new AbortController()
   const debug = debugDiagnosticsEnabled()
@@ -601,6 +634,7 @@ async function startRemoteRun(ctx, host, request, runs) {
     permission: host.permission,
     remoteSession: host.remoteSession ?? 'close',
   })
+  onChange?.('sync')
 
   const settle = (outcome) => {
     if (settled) return
@@ -629,6 +663,7 @@ async function startRemoteRun(ctx, host, request, runs) {
     })
     ctx.logger?.warn?.(`[dsh-subagent-remote] ${host.provider}: rejected delegation: ${message}`)
     runs?.finish(id, { status: 'error', stopReason: 'error', error: message, text: '', durationMs: 0 })
+    onChange?.('sync')
     return { id, result, dispose: () => Promise.resolve() }
   }
 
@@ -644,6 +679,7 @@ async function startRemoteRun(ctx, host, request, runs) {
   // the remote run outlives the delegating turn (see lib/policy.js).
   if (host.permission === 'ask') {
     runs?.update(id, { phase: 'authorizing' })
+    onChange?.('async')
     facts.preAuth = await requestRunPreAuthorization({
       ctx,
       request,
@@ -662,6 +698,7 @@ async function startRemoteRun(ctx, host, request, runs) {
 
   taskPromise = (async () => {
     runs?.update(id, { phase: 'running' })
+    onChange?.('async')
     const outcome = await runRemoteTask({
       endpoint: { ...host, cwd },
       promptText,
@@ -674,7 +711,10 @@ async function startRemoteRun(ctx, host, request, runs) {
       disposeGraceMs: host.disposeGraceMs,
       expectAgentName: host.expectAgentName,
       closeRemoteSession: host.remoteSession !== 'keep',
-      onUpdate: (kind, update) => runs?.progress(id, kind, update),
+      onUpdate: (kind, update) => {
+        runs?.progress(id, kind, update)
+        onChange?.('async')
+      },
     })
     Object.assign(facts, outcome)
     const output = outcome.text.length > 0 ? [{ type: 'text', text: outcome.text }] : []
@@ -690,6 +730,7 @@ async function startRemoteRun(ctx, host, request, runs) {
       usage: Array.isArray(outcome.usage) && outcome.usage.length > 0 ? outcome.usage[outcome.usage.length - 1] : null,
       error: failed ? (outcome.error ?? classified?.category ?? 'remote run failed') : null,
     })
+    onChange?.('sync')
     return {
       output,
       stopReason: outcome.stopReason,
@@ -721,6 +762,7 @@ async function startRemoteRun(ctx, host, request, runs) {
       }
       settle(failed)
       runs?.finish(id, { status: 'error', stopReason: 'error', error: message, text: '' })
+      onChange?.('sync')
       return failed
     },
   )
@@ -785,8 +827,45 @@ export function apply(ctx, config) {
   // subagent seam is effect-scoped and HMR safe).
   const liveHosts = new Map()
   const providerDisposers = new Map()
-  const runtime = { selection: undefined, toolCtx: null, toolDisposer: null }
+  const runtime = {
+    selection: undefined,
+    toolCtx: null,
+    toolDisposer: null,
+    autoPrompt: overlay.autoPrompt !== false,
+  }
   const runRegistry = createRunRegistry()
+  // Durable journal: restore previous runs (running -> orphaned), then keep a
+  // bounded snapshot in sync. Begin/finish writes are synchronous so a Host
+  // crash shortly after dispatch still leaves an orphaned record on restart.
+  const recovered = recoverJournal()
+  if (recovered.records.length > 0) runRegistry.restore(recovered.records)
+  let persistTimer = null
+  const persistRunsNow = () => {
+    if (persistTimer !== null) {
+      clearTimeout(persistTimer)
+      persistTimer = null
+    }
+    try {
+      if (saveJournal(runRegistry.snapshot()) !== true) {
+        ctx.logger?.warn?.('[dsh-subagent-remote] run journal write failed')
+      }
+    } catch (error) {
+      ctx.logger?.warn?.(`[dsh-subagent-remote] run journal write threw: ${String(error?.message ?? error)}`)
+    }
+  }
+  const schedulePersist = () => {
+    if (persistTimer !== null) return
+    persistTimer = setTimeout(() => {
+      persistTimer = null
+      persistRunsNow()
+    }, 1000)
+    persistTimer.unref?.()
+  }
+  const persistRunChange = (mode) => {
+    if (mode === 'sync') persistRunsNow()
+    else schedulePersist()
+  }
+  ctx.effect?.(() => () => persistRunsNow(), 'dsh-subagent-remote: run journal')
 
   /**
    * (Re-)register the model-facing tool so its host enum follows the live hosts.
@@ -822,7 +901,7 @@ export function apply(ctx, config) {
         if (live === undefined) {
           throw new Error(`dsh-subagent-remote: host "${host.name}" is no longer configured`)
         }
-        return startRemoteRun(ctx, live, request, runRegistry)
+        return startRemoteRun(ctx, live, request, runRegistry, persistRunChange)
       },
     })
     providerDisposers.set(host.name, { providerName: host.provider, dispose })
@@ -916,11 +995,28 @@ export function apply(ctx, config) {
       configDefault,
       getState: () => readState(),
       setState: (next) => writeState(next),
+      setAutoPrompt: (enabled) => { runtime.autoPrompt = enabled },
       getRuns: (sessionId) => runRegistry.list(sessionId),
+      clearOrphaned: () => {
+        const removed = runRegistry.clearOrphaned()
+        persistRunChange('sync')
+        return removed
+      },
     })
     if (typeof disposer === 'function') {
       ctx.logger?.info?.(`[dsh-subagent-remote] settings RPC registered at ${RPC_PATH}`)
     }
+  })
+
+  // Every new session should know the capability exists and when to use it,
+  // without the user naming the plugin. The callback reads the live host map.
+  ctx.inject(['systemPrompt'], (systemPromptCtx) => {
+    const toolName = toolConfig === undefined ? 'remote_subagent' : (toolConfig.name ?? 'remote_subagent')
+    systemPromptCtx.systemPrompt.section({
+      name: 'tool:remote-subagent',
+      order: systemPromptCtx.systemPrompt.getSectionOrder('TOOL_SUBAGENT'),
+      text: () => (runtime.autoPrompt ? buildRemoteSubagentSection([...liveHosts.values()], toolName) : ''),
+    })
   })
 
   // Interactive `/remote-host` switcher (Web/Desktop command surface).
