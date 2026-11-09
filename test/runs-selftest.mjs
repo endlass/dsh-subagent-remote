@@ -117,5 +117,22 @@ check('unknown finish is a no-op', registry.list().some((run) => run.id === 'mis
 registry.progress('run-d', 'tool_call', { title: 'late' })
 check('settled record ignores late progress', registry.list('session-1')[0].toolCalls, 0)
 
+// ------------------------------------------------- durable journal integration
+let restoreNow = 100_000
+const restored = createRunRegistry({ keepMs: 1_000, orphanKeepMs: 200_000, now: () => restoreNow })
+check('restore returns count', restored.restore([
+  { id: 'o1', sessionId: 's', host: 'volc', status: 'orphaned', phase: 'orphaned', startedAt: 1_000, finishedAt: 2_000, durationMs: 1_000, orphanedAt: 2_000 },
+  { id: 'r1', sessionId: 's', host: 'win', status: 'running', phase: 'running', startedAt: 3_000 },
+  { id: '' },
+  { id: 'o1', sessionId: 's', status: 'orphaned' },
+]), 2)
+check('restored orphan retained past normal keep window', restored.list('s').some((run) => run.id === 'o1'), true)
+check('restored running record sorted first', restored.list('s')[0].id, 'r1')
+check('restored snapshot serializable', JSON.parse(JSON.stringify(restored.snapshot())).length, 2)
+check('clearOrphaned removes only orphaned', restored.clearOrphaned(), 1)
+check('running record survives clear', restored.list('s').map((run) => run.id), ['r1'])
+restoreNow += 300_000
+check('orphan expired after orphanKeepMs', restored.list('s').filter((run) => run.status === 'orphaned').length, 0)
+
 console.log(failed === 0 ? '\nPASS runs-selftest' : `\nFAIL runs-selftest (${failed})`)
 process.exit(failed === 0 ? 0 : 1)

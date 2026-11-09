@@ -11,6 +11,10 @@
 import { buildUnifiedRemoteTool, registerUnifiedTool } from '../lib/tool.js'
 
 let failed = 0
+function checkTrue(name, value, detail) {
+  if (value !== true) { failed += 1; console.error(`FAIL ${name}${detail === undefined ? '' : `: ${detail}`}`) }
+}
+
 function check(name, actual, expected) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected)
   if (!ok) {
@@ -53,6 +57,16 @@ check('tool name', definition.name, 'remote_subagent')
 check('host enum', definition.parameters.properties.host.enum, ['host-a', 'mac'])
 check('required fields', definition.parameters.required, ['description', 'prompt'])
 check('description mentions hosts', /host-a/.test(definition.description) && /mac/.test(definition.description), true)
+checkTrue('description explains when to use', /Use this when/.test(definition.description), definition.description)
+checkTrue('description prefers the plugin over local ssh', /prefer it over ad-hoc local ssh/.test(definition.description), definition.description)
+checkTrue('description says how to wait', /end the turn/.test(definition.description), definition.description)
+checkTrue('description forbids follow-ups', /no send_message/.test(definition.description), definition.description)
+const describedDefinition = buildUnifiedRemoteTool({
+  ctx,
+  hosts: [{ ...hosts[0], description: 'Windows 11 workstation' }],
+  toolConfig: { name: 'remote_subagent' },
+})
+checkTrue('description carries host capability', /Windows 11 workstation/.test(describedDefinition.description), describedDefinition.description)
 check('render shape', definition.output.render({}, { kind: 'activation', subagentId: 'x' }), [{ type: 'text', text: 'started subagent x' }])
 check('concurrency safe', definition.isConcurrencySafe(), true)
 

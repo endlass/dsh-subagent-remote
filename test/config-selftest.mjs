@@ -18,6 +18,7 @@ import {
   FAILURE_CATEGORIES,
   isWindowsAbsolutePath,
   parentSessionIdOf,
+  buildRemoteSubagentSection,
 } from '../index.js'
 import { decodePeerStderr, resolveLocalDsh, scrubEnv } from '../lib/acp.js'
 import {
@@ -42,6 +43,14 @@ function check(name, actual, expected) {
     console.error(`FAIL ${name}: expected ${JSON.stringify(expected)} got ${JSON.stringify(actual)}`)
   } else {
     console.log(`ok   ${name}`)
+  }
+}
+function checkTrue(name, value, detail) {
+  if (value === true) {
+    console.log(`ok   ${name}`)
+  } else {
+    failed += 1
+    console.error(`FAIL ${name}${detail === undefined ? '' : `: ${detail}`}`)
   }
 }
 function expectThrow(name, fn, pattern) {
@@ -88,6 +97,24 @@ check('parent session id from agent session', parentSessionIdOf({ parent: { sess
 check('parent session id fallback field', parentSessionIdOf({ parent: { sessionId: 'session-2' } }), 'session-2')
 check('parent session id missing', parentSessionIdOf({}), null)
 check('parent session id non-object', parentSessionIdOf(null), null)
+
+// --- delegation discoverability (dynamic system prompt section) -----------
+check('host description normalized', normalizeHosts({ ssh: 'example-host', cwd: 'C:/Users/x', description: 'Windows 11 workstation' })[0].description, 'Windows 11 workstation')
+check('system prompt section empty without hosts', buildRemoteSubagentSection([]), '')
+const sectionHosts = [
+  { name: 'win', remoteShell: 'cmd', cwd: 'C:/Users/x', description: 'Windows 11 workstation, PowerShell', permission: 'auto' },
+  { name: 'srv', remoteShell: 'posix', cwd: '/srv/work', permission: 'read-only' },
+]
+const sectionText = buildRemoteSubagentSection(sectionHosts, 'remote_subagent')
+checkTrue('system prompt section names the tool', sectionText.includes('remote_subagent'), sectionText)
+checkTrue('system prompt section lists Windows host', sectionText.includes('win — Windows remote') && sectionText.includes('Windows 11 workstation'), sectionText)
+checkTrue('system prompt section lists POSIX host', sectionText.includes('srv — POSIX remote'), sectionText)
+checkTrue('system prompt section explains when to use', /Use this tool when/.test(sectionText), sectionText)
+checkTrue('system prompt section warns about local work', /Do not use it for work the local machine can do/.test(sectionText), sectionText)
+checkTrue('system prompt section prefers the plugin over local ssh', /Prefer this tool over ad-hoc local ssh/.test(sectionText), sectionText)
+checkTrue('system prompt section says how to wait', /do not poll|end the turn/.test(sectionText), sectionText)
+checkTrue('system prompt section forbids follow-ups', /send_message/.test(sectionText), sectionText)
+check('disabled host omitted from section', buildRemoteSubagentSection([{ ...sectionHosts[0], disabled: true }]), '')
 
 // --- hosts array ----------------------------------------------------------
 const hosts = normalizeHosts({
