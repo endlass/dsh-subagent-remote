@@ -15,8 +15,12 @@ permissions:
 
 jobs:
   publish:
-    # Never publish from a fork or from a renamed/invisible repository.
-    if: github.repository == 'endlass/dsh-subagent-remote'
+    # Never publish from a fork/renamed repository, and only from main or a
+    # release tag — a manual workflow_dispatch from a feature branch must not
+    # publish that branch's package.json.
+    if: >-
+      github.repository == 'endlass/dsh-subagent-remote' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
