@@ -13,8 +13,8 @@
 返回本地父会话；本地会话本身不迁移、不对外暴露。
 
 > **版本状态**：仓库当前是 `0.9.2-rc.8`（会话顶部运行指示器 + Windows 远端 +
-> **异常未结算任务可见**）。npm 上 `latest` = `0.9.2-rc.4`、`next` = `0.9.2-rc.8`；
-> 装最新预发布用 `dsh-subagent-remote@next`（或精确钉 `@0.9.2-rc.8`），本地开发用 `link:`。
+> **异常未结算任务可见**）。npm 上 `latest` = `next` = `0.9.2-rc.8`；默认安装就是 rc.8
+> （也可精确钉 `@0.9.2-rc.8`），本地开发用 `link:`。
 > 兼容窗口：`engines.dsh: ">=0.2.0-rc.2 <0.3.0"`、`engines.node: ">=22"`。已在
 > DSH `0.2.1-rc.5`（Windows 桌面父会话 → 一台 Linux 主机、一台 macOS 主机、以及本地
 > `acp` profile）和 DSH `0.2.2-rc.1`（macOS 父会话 → Windows 远端；Web UI 顶部指示器
@@ -104,15 +104,13 @@ SSH 凭据——凭据完全走本机 `ssh` 配置/agent；远端 DSH 的凭据�
 因此任何 pnpm spec 都可用）：
 
 ```bash
-dsh plugin --profile <profile> add dsh-subagent-remote          # latest = 0.9.2-rc.4
-dsh plugin --profile <profile> add dsh-subagent-remote@next    # 最新预发布 = 0.9.2-rc.8
+dsh plugin --profile <profile> add dsh-subagent-remote          # latest = 0.9.2-rc.8
 # 或精确钉版本
 dsh plugin --profile <profile> add dsh-subagent-remote@0.9.2-rc.8
 ```
 
-npm dist-tags：`latest` = `0.9.2-rc.4`、`next` = `0.9.2-rc.8`。发布工作流把 `-rc.N`
-发到 `next`，只有正式版才发 `latest`。仓库版本 `0.9.2-rc.8` 已发布到 `next`；
-`0.9.2-rc.5`–`rc.7` 是仓库预发布，从未发到 npm。
+npm dist-tags：`latest` = `next` = `0.9.2-rc.8`（发布工作流把 `-rc.N` 发到 `next`；
+rc.8 发布后已提升为 `latest`）。`0.9.2-rc.5`–`rc.7` 是仓库预发布，从未发到 npm。
 
 ### 插件页（Web/桌面）
 
@@ -629,7 +627,7 @@ dsh plugin --profile <profile> remove dsh-subagent-remote
 ### 回滚
 
 - **registry 安装**：钉回上一个已发布构建再重启：
-  `dsh plugin --profile <profile> add dsh-subagent-remote@next`（rc.8）或 `@0.9.2-rc.4`（latest）。
+  `dsh plugin --profile <profile> add dsh-subagent-remote`（latest = rc.8）。
 - **link/开发安装**：在 checkout 里 `git checkout <previous-commit-or-tag>`，然后重启 DSH。
 - **只回滚配置**：恢复/删除 JSON overlay（或 profile patch 备份）；手改的 overlay 需要重启，
   页面里的编辑是热生效的。
@@ -654,7 +652,7 @@ dsh plugin --profile <profile> remove dsh-subagent-remote
 | Host Node | `engines.node: ">=22"`（CI 矩阵 Node 22/24） |
 | 本地父会话 UI | Web / DSH 桌面：插件页、会话顶部指示器、`/remote-host`；headless/ACP profile 无 UI 也能工作 |
 | 远端 OS | POSIX（`sh -c`，带 pid 探测）或 Windows OpenSSH（`cmd.exe` 载体，盘符 `cwd`） |
-| npm 已发布构建 | `0.9.2-rc.3`、`0.9.2-rc.4`（`latest`）、`0.9.2-rc.8`（`next`）；`0.9.2-rc.5`–`0.9.2-rc.7` 从未发布 |
+| npm 已发布构建 | `0.9.2-rc.3`、`0.9.2-rc.4`、`0.9.2-rc.8`（`latest`/`next`）；`0.9.2-rc.5`–`0.9.2-rc.7` 从未发布 |
 
 - 唯一的兼容闸门是 `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`（与 `engines.node: ">=22"` 并列）；
   DSH 的插件工具链以 `engines.dsh` 作为 DSH 版本窗口的权威依据。旧的
@@ -675,7 +673,7 @@ dsh plugin --profile <profile> remove dsh-subagent-remote
 
 | 插件 | DSH | npm | 状态 |
 |---|---|---|---|
-| 0.9.2-rc.8 | `0.2.2-rc.1` | 已发布（`next`） | P0：run journal + orphaned 可见性（可见/可清除；无自动恢复） |
+| 0.9.2-rc.8 | `0.2.2-rc.1` | 已发布（`latest`/`next`） | P0：run journal + orphaned 可见性（可见/可清除；无自动恢复） |
 | 0.9.2-rc.7 | `0.2.2-rc.1` | 未发布 | 已验证（macOS 父会话 → Windows 远端；Web UI 会话顶部指示器 running → done）— 自动委托提示 + 会话顶部运行指示器 |
 | 0.9.2-rc.6 | `0.2.2-rc.1` | 未发布 | 已验证（macOS 父会话 → Windows 远端，cmd 载体；Windows 父会话 → Linux/macOS 目标）— Windows 远端支持 |
 | 0.9.2-rc.5 | `0.2.1-rc.5` | 未发布 | 已验证（Windows 桌面父会话；Linux/macOS 目标）——打包/展示 pass |
