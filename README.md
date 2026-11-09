@@ -14,10 +14,10 @@ profile living on another machine, over SSH, and returns that remote agent's
 closing message to the local parent session.
 
 > **Version status.** The repository is at `0.9.2-rc.8` (session-header run
-> indicator + Windows remote + **visible unsettled runs**); `0.9.2-rc.8` is
-> **not published to npm yet** — the registry builds are `0.9.2-rc.3` and
-> `0.9.2-rc.4` (`latest`/`next` both point at `0.9.2-rc.4`). To use the current
-> code, install from a checkout with `link:` or from a locally built bundle.
+> indicator + Windows remote + **visible unsettled runs**). npm has
+> `0.9.2-rc.4` on `latest` and `0.9.2-rc.8` on `next`; install the newest
+> prerelease with `dsh-subagent-remote@next` (or pin `@0.9.2-rc.8`), or use
+> `link:` from a checkout for local development.
 > Compatibility window: `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`, `engines.node: ">=22"`.
 > Verified on DSH `0.2.1-rc.5` (Windows desktop parent → a Linux host, a macOS host,
 > and a local `acp` profile) and DSH `0.2.2-rc.1` (macOS parent → Windows remote;
@@ -121,16 +121,16 @@ Install a published build into a profile (`dsh plugin` forwards to `pnpm` inside
 the profile directory, so any pnpm spec works):
 
 ```bash
-dsh plugin --profile <profile> add dsh-subagent-remote
-# pin a specific published build
-dsh plugin --profile <profile> add dsh-subagent-remote@0.9.2-rc.4
+dsh plugin --profile <profile> add dsh-subagent-remote          # latest = 0.9.2-rc.4
+dsh plugin --profile <profile> add dsh-subagent-remote@next    # newest prerelease = 0.9.2-rc.8
+# or pin the exact version
+dsh plugin --profile <profile> add dsh-subagent-remote@0.9.2-rc.8
 ```
 
-Published builds are pre-releases: `0.9.2-rc.3` and `0.9.2-rc.4` are on npm
-(`latest`/`next` both point at `0.9.2-rc.4`); the publish workflow maps `-rc.N`
-versions to the `next` dist-tag and only final releases to `latest`. The current
-repository version `0.9.2-rc.8` is **not published** — use `link:` or a local
-bundle (below) to run it.
+npm dist-tags: `latest` = `0.9.2-rc.4`, `next` = `0.9.2-rc.8`. The publish
+workflow maps `-rc.N` versions to `next` and only final releases to `latest`.
+The repository version `0.9.2-rc.8` is published on `next`; `0.9.2-rc.5`–`rc.7`
+are repository pre-releases that were never published.
 
 ### Plugins page (Web/Desktop)
 
@@ -732,7 +732,7 @@ known limits).
 ### Rollback
 
 - **Registry install**: pin the previous published build and restart:
-  `dsh plugin --profile <profile> add dsh-subagent-remote@0.9.2-rc.4`.
+  `dsh plugin --profile <profile> add dsh-subagent-remote@next` (rc.8) or `@0.9.2-rc.4` (latest).
 - **Link/development install**: `git checkout <previous-commit-or-tag>` in the
   checkout, then restart DSH.
 - **Configuration-only rollback**: restore/delete the JSON overlay (or the profile
@@ -762,7 +762,7 @@ known limits).
 | Host Node | `engines.node: ">=22"` (CI matrix Node 22 and 24) |
 | Local parent UI | Web / DSH Desktop for the plugin page, session-header indicator and `/remote-host`; headless/ACP profiles work without UI |
 | Remote OS | POSIX (`sh -c`, pid probe) or Windows OpenSSH (`cmd.exe` carrier, drive-letter `cwd`) |
-| Published npm builds | `0.9.2-rc.3`, `0.9.2-rc.4` (`latest`/`next` = `0.9.2-rc.4`); `0.9.2-rc.5`–`0.9.2-rc.8` are repository pre-releases, not published |
+| Published npm builds | `0.9.2-rc.3`, `0.9.2-rc.4` (`latest`), `0.9.2-rc.8` (`next`); `0.9.2-rc.5`–`0.9.2-rc.7` were never published |
 
 - The only compatibility gate is `engines.dsh: ">=0.2.0-rc.2 <0.3.0"` (next to
   `engines.node: ">=22"`); DSH's plugin tooling treats `engines.dsh` as the
@@ -787,7 +787,7 @@ known limits).
 
 | Plugin | DSH | npm | Status |
 |---|---|---|---|
-| 0.9.2-rc.8 | `0.2.2-rc.1` | not published | P0: run journal + orphaned visibility (visibility/clear; no automatic recovery) |
+| 0.9.2-rc.8 | `0.2.2-rc.1` | published (`next`) | P0: run journal + orphaned visibility (visibility/clear; no automatic recovery) |
 | 0.9.2-rc.7 | `0.2.2-rc.1` | not published | verified (macOS parent → Windows remote; Web UI session-header indicator running → done) — delegation hint + session-header run indicator |
 | 0.9.2-rc.6 | `0.2.2-rc.1` | not published | verified (macOS parent → Windows remote via cmd carrier; Windows parent → Linux/macOS targets) — Windows remote support |
 | 0.9.2-rc.5 | `0.2.1-rc.5` | not published | verified (desktop Windows host; Linux/macOS targets) — packaging/display pass |
