@@ -3,9 +3,54 @@
 All notable changes to `dsh-subagent-remote` are documented here. Versions use
 semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
-## 0.9.2-rc.7
+Published on npm: `0.9.2-rc.3` and `0.9.2-rc.4` (`latest`/`next` both point at
+`0.9.2-rc.4`). `0.9.2-rc.5`–`0.9.2-rc.8` are repository pre-releases that have
+**not** been published to npm yet; install them from a checkout (`link:`) or a
+locally built bundle.
 
-Session-header remote-run indicator.
+## 0.9.2-rc.8 (not published)
+
+Durable run journal + orphaned-run visibility (P0 exception handling).
+
+- `lib/journal.js`: persist a bounded run snapshot to
+  `$DSH_HOME/storages/dsh-subagent-remote/runs.json` (versioned, atomic temp+rename,
+  mode 0600). Begin/finish checkpoints are synchronous; progress updates are
+  debounced. A missing/corrupt journal is treated as empty.
+- On Host restart, records still marked `running` are recovered as **orphaned**
+  (not failed): the remote machine may have completed the work, so the plugin
+  surfaces them for manual reconciliation instead of silently dropping them.
+  Orphaned records are retained for 7 days (normal settled runs: 10 minutes).
+- Settings RPC `clearOrphaned`; the plugin page shows an "unsettled remote runs"
+  banner with host/startedAt/remoteSession and a Clear button. The session-header
+  indicator shows orphaned runs with an "interrupted — verify" status.
+- Tests: `test/journal-selftest.mjs` (roundtrip, orphan marking, corruption,
+  atomic temp cleanup, DSH_HOME path); run-registry tests cover restore/snapshot/
+  clear/orphan retention.
+- Still one-shot: there is no automatic retry, reconnect or resume in this
+  release; the journal only makes the interruption visible and reconcilable.
+
+## 0.9.2-rc.7 (not published)
+
+Delegation discoverability (system prompt) + session-header remote-run indicator.
+
+### Delegation discoverability
+
+- Register a dynamic `tool:remote-subagent` system-prompt section
+  (same order as the official `TOOL_SUBAGENT` section) with the live host list,
+  platform/cwd/description/permission and when-to-use guidance; the unified tool
+  description now explains when to use it and carries host capability notes. New
+  sessions can choose `remote_subagent` without the user naming the plugin.
+- Host config: optional `description` field (also accepted by the JSON overlay, capped
+  at 500 chars) surfaced to the model in the tool description and system prompt.
+- Prompt guidance also tells the model to dispatch and end the turn instead of polling
+  (`list_agents`/`job_list`) or sleeping while the remote task runs; it prefers
+  `remote_subagent` over ad-hoc local ssh/bash to the configured hosts so the permission
+  policy, diagnostics and session-header indicator are not bypassed.
+- Plugin-page switch “Auto-inject delegation hint” (`autoPrompt` in the JSON overlay,
+  default on): off skips the system-prompt section while keeping the tool, host config
+  and `/remote-host` available for manual reminders.
+
+### Session-header run indicator
 
 - Host: `lib/runs.js` in-memory run registry (running/completed/error/aborted with
   host, endpoint, cwd, permission, tool count, last tool/status, usage, result

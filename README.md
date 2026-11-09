@@ -4,17 +4,62 @@
 
 [中文](README.zh.md) | English
 
+[![npm version](https://img.shields.io/npm/v/dsh-subagent-remote?label=npm)](https://www.npmjs.com/package/dsh-subagent-remote)
+[![license](https://img.shields.io/npm/l/dsh-subagent-remote)](LICENSE)
+[![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2%20%3C0.3.0-blue)](package.json)
+
 Cross-machine (remote) subagent provider for DeepSeek Harness (DSH). A delegation
 issued from a local DSH session runs one **one-shot** subagent task on a DSH `acp`
 profile living on another machine, over SSH, and returns that remote agent's
 closing message to the local parent session.
 
-> Release candidate `0.9.2-rc.7` (**session-header run indicator** + Windows
-> remote). Compatibility window: `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`. Verified on
-> DSH `0.2.1-rc.5` (Windows desktop parent → a Linux host, a macOS host, and a local
-> `acp` profile) and DSH `0.2.2-rc.1` (macOS parent → Windows remote; Web UI
-> indicator running → done). Pre-release builds `0.9.2-rc.3`/`0.9.2-rc.4` are
-> published on npm.
+> **Version status.** The repository is at `0.9.2-rc.8` (session-header run
+> indicator + Windows remote + **visible unsettled runs**); `0.9.2-rc.8` is
+> **not published to npm yet** — the registry builds are `0.9.2-rc.3` and
+> `0.9.2-rc.4` (`latest`/`next` both point at `0.9.2-rc.4`). To use the current
+> code, install from a checkout with `link:` or from a locally built bundle.
+> Compatibility window: `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`, `engines.node: ">=22"`.
+> Verified on DSH `0.2.1-rc.5` (Windows desktop parent → a Linux host, a macOS host,
+> and a local `acp` profile) and DSH `0.2.2-rc.1` (macOS parent → Windows remote;
+> Web UI indicator running → done).
+
+## Contents
+
+- [Requirements](#requirements)
+- [Screenshots](#screenshots)
+- [Capabilities](#capabilities)
+- [Installation forms](#installation-forms)
+  - [npm registry](#npm-registry)
+  - [Plugins page (Web/Desktop)](#plugins-page-webdesktop)
+  - [Bundle install](#bundle-install)
+  - [Local checkout (`link:`)](#local-checkout-link)
+  - [Activation conditions](#activation-conditions)
+  - [Path-loaded overlay](#path-loaded-overlay)
+- [Files](#files)
+- [How it works](#how-it-works)
+- [Configuration](#configuration)
+- [Permission model](#permission-model)
+- [Failure behavior](#failure-behavior)
+- [Diagnostics](#diagnostics)
+- [Security & boundaries](#security--boundaries)
+- [Development & verification](#development--verification)
+- [Install / uninstall / rollback](#install--uninstall--rollback)
+- [Known limits (V1/V2)](#known-limits-v1v2)
+- [Compatibility](#compatibility)
+- [License](#license)
+
+## Requirements
+
+| Side | Requirement |
+|---|---|
+| Local Host | DSH `>=0.2.0-rc.2 <0.3.0` (desktop app or a `dsh` CLI profile); Node `>=22` |
+| Local UI *(optional)* | Web/Desktop for the plugin page, the session-header indicator and `/remote-host`; headless/ACP profiles keep dispatch, diagnostics and results without UI |
+| Remote machine | its own DSH installation exposing the `acp` profile, reachable over SSH with a key/agent the local machine can use; POSIX `sh` or Windows OpenSSH (`cmd.exe` carrier) |
+| Remote workspace | `cwd` must be an existing **absolute** path on the remote machine |
+
+The plugin has no third-party runtime dependencies (`index.js` + `lib/*`, Node
+built-ins only). SSH credentials are never stored by the plugin — they follow your
+local `ssh` config/agent; remote DSH credentials stay on the remote machine.
 
 ## Screenshots
 
@@ -49,6 +94,14 @@ closing message to the local parent session.
 - **Session-header run indicator** — after a dispatch, the conversation header shows
   the remote host, status and elapsed time (after the official subagent/background
   indicators); settled runs keep a short result/tool summary that expands into detail.
+- **Automatic delegation hint (system prompt)** — every new session gets a dynamic
+  system-prompt section describing the remote hosts and when to use them, so the model
+  can choose `remote_subagent` without the user naming the plugin or tool. A plugin-page
+  switch can turn the injection off (the tool remains available for manual reminders).
+- **Visible unsettled runs (P0)** — a run still in-flight when the local Host restarts is
+  recovered as `orphaned` (not failed) and shown in the plugin page and header with host,
+  time and remote session id for manual reconciliation; never silently dropped. No
+  automatic retry/resume yet.
 - **Structured diagnostics** — fixed failure facts (`stage=`/`category=`), canned
   hints, permission decisions, `agent=`, env-scrub and peer-exit facts; raw remote
   text stays debug-gated.
@@ -57,33 +110,56 @@ closing message to the local parent session.
 
 ## Installation forms
 
-### Registry install (recommended: official Plugins page or CLI)
+All forms mount the same DSH **bundle**: `cordis.patch.yml` inserts one
+`subagent-remote` row with no hosts, so a fresh install can never point at a wrong
+machine. None of them stores SSH credentials (those follow your local `ssh`
+config/agent).
 
-**Desktop / Web (official plugin manager, recommended):** open **插件 → 添加插件**,
-enter the npm package name `dsh-subagent-remote` and confirm. It appears under
-**已安装插件**; open it and use **打开配置**.
+### npm registry
 
-CLI alternative (for a specific profile):
+Install a published build into a profile (`dsh plugin` forwards to `pnpm` inside
+the profile directory, so any pnpm spec works):
 
-```powershell
+```bash
 dsh plugin --profile <profile> add dsh-subagent-remote
+# pin a specific published build
+dsh plugin --profile <profile> add dsh-subagent-remote@0.9.2-rc.4
 ```
 
-Published builds are pre-releases: the publish workflow maps pre-release versions
-(`-rc.N`) to the npm `next` dist-tag and only final releases to `latest`
-(`0.9.2-rc.4` is the most recently published build at the time of writing).
+Published builds are pre-releases: `0.9.2-rc.3` and `0.9.2-rc.4` are on npm
+(`latest`/`next` both point at `0.9.2-rc.4`); the publish workflow maps `-rc.N`
+versions to the `next` dist-tag and only final releases to `latest`. The current
+repository version `0.9.2-rc.8` is **not published** — use `link:` or a local
+bundle (below) to run it.
 
-### Local checkout (`link:`) for development
+### Plugins page (Web/Desktop)
 
-```powershell
-dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
+**Recommended on desktop/Web.** Open **插件 → 添加插件**, enter
+`dsh-subagent-remote` and confirm. The plugin appears under **已安装插件**; open it
+and use **打开配置**. The plugin card and configuration page are shown in the
+screenshots above.
+
+### Bundle install
+
+The package is a DSH bundle (`dsh.bundle.patch` → `cordis.patch.yml`). Agent
+tooling and non-UI flows can install it through the plugin manager's
+`install_bundle` action with the package name/spec as `target` — the same action
+the Plugins page uses. Use this form for a local build (for example a tarball
+produced by `npm pack`) or a catalog/bundle spec. It inserts the patch into the
+profile exactly like the CLI form; restart DSH afterwards.
+
+### Local checkout (`link:`)
+
+For development, link the checkout directly (the working tree is resolved as-is,
+so `files` is irrelevant):
+
+```bash
+dsh plugin --profile <profile> add "link:/path/to/dsh-subagent-remote"
 ```
 
-(The same `link:` protocol works on POSIX hosts with the checkout path.) A link
-install resolves the checkout directly, so `files` is irrelevant there — it only
-decides what a registry tarball ships.
+On Windows: `dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"`.
 
-### Activation conditions (both forms)
+### Activation conditions
 
 - Start the profile after installing: `dsh <profile> --port <n> --no-open`. The
   bundle patch inserts one row with no hosts; open **插件 → dsh-subagent-remote**
@@ -103,7 +179,7 @@ decides what a registry tarball ships.
 - The plugin row also works path-loaded from a profile patch (development workflow),
   but the configuration page only exists for bundle installs.
 
-### Path-loaded overlay (development alternative)
+### Path-loaded overlay
 
 The package can also be mounted directly from a checkout without a bundle install
 (useful while iterating on the plugin itself). Point the insert row at this
@@ -130,6 +206,8 @@ UI only exists for bundle installs.
 | `lib/policy.js` | permission classification and fail-closed decisions for `read-only`/`ask`/`deny`/`auto` |
 | `lib/tool.js` | the unified `remote_subagent` tool definition and dispatch/default-host resolution |
 | `lib/settings.js` | JSON overlay storage (atomic temp+rename writes), host selection, RPC envelope and hot-apply payload |
+| `lib/runs.js` | in-memory run registry behind the session-header indicator (bounded to 64 records, ~10 min after settle) |
+| `lib/journal.js` | durable run journal (`$DSH_HOME/storages/dsh-subagent-remote/runs.json`); restores runs interrupted by a Host restart as `orphaned` |
 | `lib/client.js` | Client half (Web/Desktop): Plugins-page configuration panel, Settings-section fallback, locale registration; loaded lazily |
 | `locale/en.json`, `locale/zh.json` | display metadata for the Plugins page (`meta.title` / `meta.description`) |
 | `assets/icon.png` | plugin icon (PNG, ≤256 KiB), referenced by the top-level `icon` and the `./icon` export |
@@ -140,7 +218,7 @@ UI only exists for bundle installs.
 | `SECURITY.md` | trust model, reporting, security caveats |
 | `LICENSE` | MIT |
 | `test/` | zero-dependency offline selftests plus the mock ACP peer; kept in the repository/CI and **not shipped in the npm tarball** (repo/CI only) |
-| `.github/workflows/` | CI (Ubuntu + Windows, Node 22) and the npm publish workflow |
+| `.github/workflows/` | CI (Ubuntu + Windows + macOS, Node 22/24, packaging check) and the npm publish workflow |
 
 The Plugins page shows the plugin **title, description and icon** read from
 `locale/en.json` + `locale/zh.json` (`meta.title` / `meta.description`) and the
@@ -252,6 +330,7 @@ Useful when the strict official tool wording/schema is preferred:
 | `name` | `host<N>` | label the model passes (unified tool) and used in diagnostics |
 | `provider` | `remote-<name>` | registered subagent provider name |
 | `ssh` | — | SSH destination (`~/.ssh/config` alias, `user@host`, or a relay host); must not start with `-` or contain whitespace |
+| `description` | — | optional one-line host capability note (e.g. “Windows 11 + PowerShell”); surfaced in the tool description and the system-prompt host list; also accepted by the JSON overlay |
 | `cwd` | — | remote absolute workspace passed to `session/new` |
 | `permission` | `read-only` | `read-only` / `ask` / `deny` / `auto` (see below) |
 | `remoteSession` | `close` | `close` sends ACP `session/close` before teardown; `keep` skips it so the target keeps the persisted session history (ACP has no delete API, so nothing is removed) |
@@ -401,6 +480,38 @@ surfaces (`conversation.session.header.actions`, slot order 30):
 - Headless/ACP deployments have no `connection` slot, so the indicator is absent while
   delegation, diagnostics and results are unaffected.
 
+### Automatic delegation hint
+
+The plugin registers a `tool:remote-subagent` section in `ctx.systemPrompt` (same order
+as the official `TOOL_SUBAGENT` section, 2800). Its text is dynamic: host names, platform
+(Windows/POSIX), `cwd`, `description`, permission, and when-to-use / when-not-to-use
+guidance. With no enabled host the section is empty.
+
+A new session therefore does not need the user to name the plugin or the tool: when a
+task needs another machine (Windows-only command, a machine's workspace/files/credentials,
+etc.) the model can pick `remote_subagent` itself. The unified tool description also
+carries host capability notes and the same usage guidance. The prompt also states that
+after dispatching the model must not poll (`list_agents`/`job_list`) or sleep — it should
+end the turn and wait for the runtime completion notice.
+
+**Switch**: the plugin page has an “Auto-inject delegation hint” toggle (default on,
+persisted as `autoPrompt` in the JSON overlay). Off skips the prompt section entirely;
+the tool, host config and `/remote-host` remain available for manual reminders.
+
+### Interrupted runs (P0)
+
+A one-shot remote task may be completed or interrupted on the remote side when the local
+Host restarts or crashes; the plugin cannot know which. `lib/journal.js` persists a
+bounded run snapshot to `$DSH_HOME/storages/dsh-subagent-remote/runs.json` (begin/finish
+writes synchronous, progress debounced by 1 s).
+
+- On restart, records still `running` become **orphaned** (`interrupted — verify`),
+  retained for 7 days instead of being reported as failed or silently dropped;
+- the plugin page shows an "unsettled remote runs" banner with host, startedAt, remote
+  session id and a Clear button;
+- the session-header indicator marks orphaned runs and exposes their details;
+- this is visibility/reconciliation only: **no automatic retry, reconnect or resume**.
+
 ## Permission model
 
 ACP asks the client (`session/request_permission`) before a remote tool call that
@@ -466,8 +577,13 @@ Failures are reported with **fixed facts first**: `failure: stage=… category=�
 plus canned hints, permission decisions, `agent=name/version`, `envScrubbed`,
 `peerExit`. Raw error text, stderr tail and stdout noise are **debug-only**:
 
+```bash
+# POSIX: prefix the normal dsh command
+DSH_SUBAGENT_REMOTE_DEBUG=1 <your dsh command>   # then dispatch again; the raw payload appears
+```
 ```powershell
-$env:DSH_SUBAGENT_REMOTE_DEBUG = '1'   # then dispatch again; the raw payload appears
+# PowerShell
+$env:DSH_SUBAGENT_REMOTE_DEBUG = '1'
 ```
 
 The remote is a different trust domain. Default diagnostics carry fixed facts,
@@ -510,26 +626,33 @@ noise (visible in debug mode).
 
 ## Development & verification
 
+Contributions are welcome: keep `npm run check && npm test` green, and report
+vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
 ### Tests
 
-```powershell
+```bash
 # pure unit tests (no DSH, no network, no credentials) — also what CI runs
 node test/policy-selftest.mjs     # permission policy
 node test/tool-selftest.mjs       # unified tool definition + dispatch + default-host resolution
-node test/config-selftest.mjs     # config, ssh validation, task validation, failures, diagnostics, stderr decoding, env scrub
+node test/config-selftest.mjs     # config, discovery prompt, ssh validation, task validation, failures, diagnostics, stderr decoding, env scrub
 node test/settings-selftest.mjs   # overlay merge/atomic state, host selection, RPC envelope, hot-apply payload
+node test/runs-selftest.mjs       # run registry, restore/snapshot, orphan retention (prints failures only)
+node test/journal-selftest.mjs    # durable journal roundtrip, orphan recovery, corruption, atomic writes
 node test/transport-selftest.mjs  # ACP transport against a mock peer
 node test/client-contract-selftest.mjs  # client bundle `inject` contract (every ctx.<service> declared)
 npm run check                     # node --check on every source file
-npm test                          # all six files (331 checks, ~7s)
+npm test                          # all eight suites (395 printed checks + runs-selftest, ~4 s)
 ```
 
-Latest evidence: `npm run check` and `npm test` (all six offline suites, including
-`PASS client-contract-selftest`) pass on the packaging/display pass, 2026-11-05;
-`engines.dsh` window verified against the local DSH 0.2.1-rc.5 install (2026-11-04).
+Latest evidence: `npm run check` and `npm test` pass on macOS (Node 26.13.0) at
+`0.9.2-rc.8`, 2026-11-09 — all eight suites, including `PASS
+client-contract-selftest`; `engines.dsh` was verified against the local DSH
+0.2.1-rc.5 and 0.2.2-rc.1 installs. `runs-selftest.mjs` prints only failures, so a
+green run ends with its `PASS runs-selftest` line.
 
 The end-to-end and Playwright acceptance harnesses live in the maintainer checkout,
-not in the published package. The npm tarball excludes `test/` entirely (the six
+not in the published package. The npm tarball excludes `test/` entirely (the eight
 offline suites stay in the repository/CI); `files` controls that split.
 
 The transport suite spawns `test/fixtures/mock-acp-peer.mjs` (behaviour selected by
@@ -543,9 +666,9 @@ that every mock peer exited.
 ### Upgrade checklist
 
 Protocol facts here were measured against DSH **0.2.1-rc.2** and have not changed
-through the 0.2.1-rc.5 packaging pass. After upgrading DSH on either side:
+through the 0.2.2-rc.1 verification pass. After upgrading DSH on either side:
 
-1. `npm test` (all six files) — catches config/protocol contract drift.
+1. `npm test` (all eight suites) — catches config/protocol contract drift.
 2. Run one read-only delegation against each configured host (maintainers keep the
    end-to-end harness in their local checkout; it is not part of this package).
 3. Check the completion notice's `agent=` line: the ACP server's `agentInfo.version`
@@ -568,18 +691,20 @@ cannot be handshaked inside the publishing call.
 
 1. Bump `version` in `package.json` and add a `CHANGELOG.md` entry.
 2. `npm run check && npm test`.
-3. Tag and push: `git tag v0.9.2-rc.5 && git push origin main --tags` (or run the
-   **publish** workflow manually).
-4. `.github/workflows/publish.yml` publishes with npm provenance; pre-release
-   versions go to the `next` dist-tag, releases to `latest`. It needs an
+3. Commit the bump, then tag the same version and push (or run the **publish**
+   workflow manually from the UI): `git tag v0.9.2-rc.8 && git push origin main --tags`.
+   The workflow rejects a tag whose `vX.Y.Z` does not match `package.json`.
+4. `.github/workflows/publish.yml` publishes with npm provenance (OIDC); pre-release
+   versions go to the `next` dist-tag, final releases to `latest`. It needs an
    `NPM_TOKEN` repository secret; `prepublishOnly` re-runs the checks locally.
 
 ### CI
 
-`.github/workflows/ci.yml` is prepared for the public repo (Ubuntu + Windows,
-Node 22): syntax check plus all six offline test files (including the client
-contract selftest). The Playwright settings-UI acceptance is intentionally not part
-of CI (it needs a running Web UI).
+`.github/workflows/ci.yml` runs on every push/PR on Ubuntu, Windows and macOS
+(Node 22 and 24): `npm run check` plus all eight offline suites, and a separate
+packaging job that runs `npm pack --dry-run` and asserts the tarball contains no
+`test/`, `.git*` or `.tgz` files. The Playwright settings-UI acceptance is
+intentionally not part of CI (it needs a running Web UI).
 
 ## Install / uninstall / rollback
 
@@ -593,14 +718,16 @@ page refresh.
 
 ### Uninstall
 
-```powershell
+```bash
 dsh plugin --profile <profile> remove dsh-subagent-remote
 ```
 
 or remove it from the Plugins page, then restart DSH. Optional cleanup: delete the
 overlay `$DSH_HOME/subagent-remote.json` — it holds page-added hosts and the
-default-host selection (keep it if you plan to reinstall). Remote persistent
-sessions are not deleted (see known limits).
+default-host selection (keep it if you plan to reinstall) — and the run journal
+directory `$DSH_HOME/storages/dsh-subagent-remote/` (bounded run snapshots,
+including orphaned records). Remote persistent sessions are not deleted (see
+known limits).
 
 ### Rollback
 
@@ -623,8 +750,19 @@ sessions are not deleted (see known limits).
   its id in the diagnostic and closes it, but does not delete history.
 * The read-only classification is a conservative heuristic (tool-name allowlist +
   shell write-pattern scan), not a complete static analysis.
+* The run journal is a local snapshot: it makes an interrupted run *visible*, but it
+  cannot tell whether the remote side finished. Reconciliation stays manual, and
+  there is no automatic retry/resume.
 
 ## Compatibility
+
+| Component | Supported / verified |
+|---|---|
+| Host DSH | `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`; verified on `0.2.1-rc.5` and `0.2.2-rc.1` |
+| Host Node | `engines.node: ">=22"` (CI matrix Node 22 and 24) |
+| Local parent UI | Web / DSH Desktop for the plugin page, session-header indicator and `/remote-host`; headless/ACP profiles work without UI |
+| Remote OS | POSIX (`sh -c`, pid probe) or Windows OpenSSH (`cmd.exe` carrier, drive-letter `cwd`) |
+| Published npm builds | `0.9.2-rc.3`, `0.9.2-rc.4` (`latest`/`next` = `0.9.2-rc.4`); `0.9.2-rc.5`–`0.9.2-rc.8` are repository pre-releases, not published |
 
 - The only compatibility gate is `engines.dsh: ">=0.2.0-rc.2 <0.3.0"` (next to
   `engines.node: ">=22"`); DSH's plugin tooling treats `engines.dsh` as the
@@ -643,13 +781,20 @@ sessions are not deleted (see known limits).
   (2026-11-05; macOS parent → Windows remote via the cmd carrier; the remote agent
   executed a Windows-only PowerShell task and returned the closing message). The same
   build verified the Web UI session-header indicator after the official “N subagents”
-  chip, including running → done and the detail menu. `rc.7` adds that indicator; the
-  dispatch protocol matches `rc.6`, and the offline suites were re-run.
+  chip, including running → done and the detail menu. `rc.7` adds that indicator;
+  `rc.8` adds the durable journal/orphaned visibility on top of the unchanged
+  dispatch protocol, and all eight offline suites were re-run (2026-11-09).
 
-| Plugin | DSH | Status |
-|---|---|---|
-| 0.9.2-rc.7 | `0.2.2-rc.1` | verified (macOS parent → Windows remote; Web UI session-header indicator running → done) — session-header run indicator |
-| 0.9.2-rc.6 | `0.2.2-rc.1` | verified (macOS parent → Windows remote via cmd carrier; Windows parent → Linux/macOS targets) — Windows remote support |
-| 0.9.2-rc.5 | `0.2.1-rc.5` | verified (desktop Windows host; Linux/macOS targets) — packaging/display pass |
-| 0.9.2-rc.4 | `0.2.1-rc.3` | verified (desktop Windows host; Linux/macOS targets) |
-| 0.9.2-rc.4 | `0.2.1-rc.2` | verified |
+| Plugin | DSH | npm | Status |
+|---|---|---|---|
+| 0.9.2-rc.8 | `0.2.2-rc.1` | not published | P0: run journal + orphaned visibility (visibility/clear; no automatic recovery) |
+| 0.9.2-rc.7 | `0.2.2-rc.1` | not published | verified (macOS parent → Windows remote; Web UI session-header indicator running → done) — delegation hint + session-header run indicator |
+| 0.9.2-rc.6 | `0.2.2-rc.1` | not published | verified (macOS parent → Windows remote via cmd carrier; Windows parent → Linux/macOS targets) — Windows remote support |
+| 0.9.2-rc.5 | `0.2.1-rc.5` | not published | verified (desktop Windows host; Linux/macOS targets) — packaging/display pass |
+| 0.9.2-rc.4 | `0.2.1-rc.3` | published | verified (desktop Windows host; Linux/macOS targets) — desktop boot hotfix |
+| 0.9.2-rc.4 | `0.2.1-rc.2` | published | verified |
+| 0.9.2-rc.3 | `0.2.1-rc.3` | published | marketplace polish, plugin page + icon |
+
+## License
+
+MIT — see [LICENSE](LICENSE). Copyright © 2026 Xingchen Zhao.

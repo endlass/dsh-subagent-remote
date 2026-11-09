@@ -4,15 +4,59 @@
 
 [English](README.md) | 中文
 
+[![npm version](https://img.shields.io/npm/v/dsh-subagent-remote?label=npm)](https://www.npmjs.com/package/dsh-subagent-remote)
+[![license](https://img.shields.io/npm/l/dsh-subagent-remote)](LICENSE)
+[![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.0--rc.2%20%3C0.3.0-blue)](package.json)
+
 跨机器（远端）子智能体 provider。本地 DSH 会话发起的一次委派，会通过 SSH 在另一台
 机器上的 DSH `acp` profile 里运行**一次性**子任务，并把远端 agent 的 closing message
 返回本地父会话；本地会话本身不迁移、不对外暴露。
 
-> 候选版本 `0.9.2-rc.7`（**会话顶部运行指示器** + Windows 远端）。
-> 兼容窗口：`engines.dsh: ">=0.2.0-rc.2 <0.3.0"`。已在 DSH `0.2.1-rc.5`（Windows
-> 桌面父会话 → 一台 Linux 主机、一台 macOS 主机、以及本地 `acp` profile）和
-> DSH `0.2.2-rc.1`（macOS 父会话 → Windows 远端；Web UI 顶部指示器 running → done）
-> 上验证。预发布版本 `0.9.2-rc.3`/`0.9.2-rc.4` 已发布到 npm。
+> **版本状态**：仓库当前是 `0.9.2-rc.8`（会话顶部运行指示器 + Windows 远端 +
+> **异常未结算任务可见**），`0.9.2-rc.8` **尚未发布到 npm**——registry 上只有
+> `0.9.2-rc.3` 和 `0.9.2-rc.4`（`latest`/`next` 都指向 `0.9.2-rc.4`）。要使用当前代码，
+> 请用 `link:` 从 checkout 安装，或安装本地构建的 bundle。
+> 兼容窗口：`engines.dsh: ">=0.2.0-rc.2 <0.3.0"`、`engines.node: ">=22"`。已在
+> DSH `0.2.1-rc.5`（Windows 桌面父会话 → 一台 Linux 主机、一台 macOS 主机、以及本地
+> `acp` profile）和 DSH `0.2.2-rc.1`（macOS 父会话 → Windows 远端；Web UI 顶部指示器
+> running → done）上验证。
+
+## 目录
+
+- [前置要求](#前置要求)
+- [截图](#截图)
+- [能力](#能力)
+- [安装形态](#安装形态)
+  - [npm registry](#npm-registry)
+  - [插件页（Web/桌面）](#插件页web桌面)
+  - [Bundle 安装](#bundle-安装)
+  - [本地 checkout（`link:`）](#本地-checkoutlink)
+  - [生效条件](#生效条件)
+  - [路径加载 overlay](#路径加载-overlay)
+- [文件](#文件)
+- [工作原理](#工作原理)
+- [配置](#配置)
+- [权限模型](#权限模型)
+- [失败行为](#失败行为)
+- [诊断](#诊断)
+- [安全与边界](#安全与边界)
+- [开发与验证](#开发与验证)
+- [安装 / 卸载 / 回滚](#安装--卸载--回滚)
+- [已知限制（V1/V2）](#已知限制v1v2)
+- [兼容性](#兼容性)
+- [License](#license)
+
+## 前置要求
+
+| 一侧 | 要求 |
+|---|---|
+| 本地 Host | DSH `>=0.2.0-rc.2 <0.3.0`（桌面应用或 `dsh` CLI profile）；Node `>=22` |
+| 本地 UI（可选） | Web/桌面，用于插件页、会话顶部指示器和 `/remote-host`；headless/ACP profile 没有 UI 也能派发、诊断并取回结果 |
+| 远端机器 | 装有 DSH 并暴露 `acp` profile，且本地能用密钥/agent 经 SSH 连上；POSIX `sh` 或 Windows OpenSSH（`cmd.exe` 载体） |
+| 远端工作区 | `cwd` 必须是远端已存在的**绝对路径** |
+
+插件没有第三方运行时依赖（`index.js` + `lib/*`，只用 Node 内置模块）。插件不保存
+SSH 凭据——凭据完全走本机 `ssh` 配置/agent；远端 DSH 的凭据留在远端机器上。
 
 ## 截图
 
@@ -39,36 +83,62 @@
 - **会话内切换主机**——`/remote-host` 列出主机并切换当前会话使用的目标主机。
 - **会话顶部运行指示器**——派发后在会话 header（官方子智能体、后台任务之后）显示远端
   主机、运行状态与耗时；完成后短暂保留耗时、工具次数与结果摘要，点击展开详情。
+- **自动委托提示（system prompt）**——向每个新会话的系统提示词注册远端主机能力与使用
+  时机；用户不必点名 `remote_subagent`，模型会按任务需要自行选择。插件页可关闭该注入
+  （关闭后工具仍在，需在会话里手动提醒）。
+- **未结算任务可见（P0）**——本机重启时仍在运行的远端任务会恢复为 `orphaned`
+  （不是 failed），插件页与顶部指示器可看到主机、时间和远端 session id，方便人工核对；
+  不会自动重试/续跑。
 - **结构化诊断**——固定失败事实（`stage=`/`category=`）、内置提示、权限决定、`agent=`、
   env-scrub 与 peer 退出事实；远端原始文本默认只在 debug 开关下出现。
 - **零依赖 ESM Cordis 插件**——`index.js` + `lib/*`，无第三方依赖，全部测试可离线跑。
 
 ## 安装形态
 
-### registry 安装（推荐：官方插件页或 CLI）
+所有安装形态挂载同一个 DSH **bundle**：`cordis.patch.yml` 插入一行 `subagent-remote`
+（默认零主机，全新安装不可能指向错误机器）；插件不保存任何 SSH 凭据（凭据走本机
+`ssh` 配置/agent）。
 
-**桌面/Web（官方插件管理器，推荐）**：**插件 → 添加插件**，输入 npm 包名
-`dsh-subagent-remote` 确认。安装后出现在 **已安装插件**；点开它使用 **打开配置**。
+### npm registry
 
-CLI 方式（指定 profile）：
+把已发布版本装进 profile（`dsh plugin` 会把参数转发给 profile 目录里的 `pnpm`，
+因此任何 pnpm spec 都可用）：
 
-```powershell
+```bash
 dsh plugin --profile <profile> add dsh-subagent-remote
+# 钉住某个已发布版本
+dsh plugin --profile <profile> add dsh-subagent-remote@0.9.2-rc.4
 ```
 
-registry 上发布的是预发布版本：发布工作流把预发布版（`-rc.N`）发到 npm 的 `next` dist-tag，
-只有正式版才发 `latest`（写作时最新已发布构建是 `0.9.2-rc.4`）。
+registry 上的都是预发布版本：目前只有 `0.9.2-rc.3`、`0.9.2-rc.4`（`latest`/`next`
+都指向 `0.9.2-rc.4`）；发布工作流把 `-rc.N` 发到 npm 的 `next` dist-tag，只有正式版
+才发 `latest`。当前仓库版本 `0.9.2-rc.8` **尚未发布**——要用它请走下面的 `link:`
+或本地 bundle。
 
-### 本地 checkout 的 `link:` 开发安装
+### 插件页（Web/桌面）
 
-```powershell
-dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
+**桌面/Web 推荐方式。** 打开 **插件 → 添加插件**，输入 `dsh-subagent-remote` 确认。
+安装后出现在 **已安装插件**；点开使用 **打开配置**。插件卡片与配置页见上面的截图。
+
+### Bundle 安装
+
+本包是一个 DSH bundle（`dsh.bundle.patch` → `cordis.patch.yml`）。Agent 工具链与
+非 UI 流程可以通过插件管理器的 `install_bundle` 动作安装，`target` 传包名/spec——
+插件页的 **添加插件** 走的就是这个动作。本地构建（例如 `npm pack` 出来的 tarball）
+或 catalog/bundle spec 也走这个形态。它和 CLI 一样把 patch 插进 profile；装完重启
+DSH。
+
+### 本地 checkout（`link:`）
+
+开发时直接 link checkout（直接解析工作树，`files` 不参与）：
+
+```bash
+dsh plugin --profile <profile> add "link:/path/to/dsh-subagent-remote"
 ```
 
-（POSIX 主机上用同样的 `link:` 协议加 checkout 路径。）link 安装直接解析 checkout，
-`files` 不参与；`files` 只决定 registry tarball 里打包哪些文件。
+Windows：`dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"`。
 
-### 生效条件（两种安装形态通用）
+### 生效条件
 
 - 安装后启动 profile：`dsh <profile> --port <n> --no-open`。bundle patch 只插入一行、
   且 `config` 为空；打开 **插件 → dsh-subagent-remote**（或 **已安装插件 →
@@ -83,7 +153,7 @@ dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
 - 全新的 bundle 安装是空的：在添加并启用主机之前不会派发任何任务。
 - 插件行也支持从 profile patch 路径加载（开发工作流），但配置页只对 bundle 安装存在。
 
-### 路径加载 overlay（开发替代方案）
+### 路径加载 overlay
 
 不安装 bundle 也可以直接从 checkout 挂载（适合迭代插件本身）：把 insert 行的 `name`
 指向本目录的 `index.js`；相对 `name` 相对 patch 文件解析：
@@ -108,6 +178,8 @@ dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
 | `lib/policy.js` | `read-only`/`ask`/`deny`/`auto` 的权限分类与 fail-closed 决定 |
 | `lib/tool.js` | 统一工具 `remote_subagent` 的定义、派发与默认主机解析 |
 | `lib/settings.js` | JSON overlay 存储（原子 temp+rename 写入）、主机选择、RPC 信封与热加载 payload |
+| `lib/runs.js` | 会话顶部指示器背后的内存运行注册表（上限 64 条，结束后约 10 分钟） |
+| `lib/journal.js` | 持久化运行日志（`$DSH_HOME/storages/dsh-subagent-remote/runs.json`）；把 Host 重启时中断的运行恢复为 `orphaned` |
 | `lib/client.js` | Client 半（Web/桌面）：插件页配置面板、设置区块降级、locale 注册；按需懒加载 |
 | `locale/en.json`、`locale/zh.json` | 插件页展示元数据（`meta.title` / `meta.description`） |
 | `assets/icon.png` | 插件图标（PNG，≤256 KiB），由顶层 `icon` 与 `./icon` 导出引用 |
@@ -118,7 +190,7 @@ dsh plugin --profile <profile> add "link:C:\path\to\dsh-subagent-remote"
 | `SECURITY.md` | 信任模型、漏洞报告与安全边界 |
 | `LICENSE` | MIT |
 | `test/` | 零依赖离线 selftest 与 mock ACP peer；保留在仓库/CI，**不进入 npm tarball** |
-| `.github/workflows/` | CI（Ubuntu + Windows，Node 22）与 npm 发布工作流 |
+| `.github/workflows/` | CI（Ubuntu + Windows + macOS，Node 22/24，含打包检查）与 npm 发布工作流 |
 
 插件管理页显示的**标题、描述和图标**来自 `locale/en.json` + `locale/zh.json` 的
 `meta.title` / `meta.description`，图标来自 package.json 顶层 `icon`
@@ -221,6 +293,7 @@ DSH 官方 out-of-process ACP 子智能体后端是刻意 local-only 的：`sess
 | `name` | `host<N>` | 模型传入的主机标签（统一工具），也用于诊断 |
 | `provider` | `remote-<name>` | 注册的子智能体 provider 名 |
 | `ssh` | — | SSH 目标（`~/.ssh/config` 别名、`user@host` 或中继主机）；不得以 `-` 开头、不得含空白 |
+| `description` | — | 可选的一行主机能力说明（如 “Windows 11 + PowerShell”）；会进入 tool description 与系统提示词的主机清单，也支持 JSON overlay |
 | `cwd` | — | 传给 `session/new` 的远端绝对工作区 |
 | `permission` | `read-only` | `read-only` / `ask` / `deny` / `auto`（见下） |
 | `remoteSession` | `close` | `close` 在 teardown 前发 ACP `session/close`；`keep` 跳过，让目标保留持久化会话历史（ACP 无删除 API，因此不会删除任何东西） |
@@ -348,6 +421,32 @@ Web/Desktop 部署下，派发远端任务后会话头部会出现一个 `⇄ <h
 - 数据来自 Host 侧内存注册表（`lib/runs.js`，上限 64 条），不写会话事件；DSH 重启后清空。
 - Headless / ACP 部署没有 `connection` 插槽，指示器不出现，但委派、诊断与结果不受影响。
 
+### 自动委托提示
+
+插件向 `ctx.systemPrompt` 注册一个 `tool:remote-subagent` 段（order 与官方 `TOOL_SUBAGENT`
+相同，2800），内容随主机列表动态变化：主机名、平台（Windows/POSIX）、`cwd`、`description`、
+权限，以及“何时用 / 何时不用”的说明。没有启用主机时该段为空。
+
+因此新会话不需要用户点名插件或工具名：当任务需要另一台机器（例如 Windows-only 命令、
+某台机器的工作区/文件/凭据）时，模型会自行选择 `remote_subagent`。统一的 tool description
+也会带上主机能力摘要与使用时机。提示词还明确告知：派发后不要轮询（`list_agents`/`job_list`）
+或 sleep，直接结束本轮等运行时完成通知。
+
+**开关**：插件页顶部「自动注入委托提示」默认开启，状态写入 overlay 的 `autoPrompt`。
+关闭后不再向系统提示词注入任何内容，但 `remote_subagent` 工具、主机配置和 `/remote-host`
+仍然可用——适合你希望完全手工提醒模型的场景。
+
+### 异常与未结算任务（P0）
+
+一次性的远端任务在本机 Host 重启/崩溃时，远端可能已经完成、也可能被中断，插件无法得知。
+`lib/journal.js` 会把运行快照持久化到 `$DSH_HOME/storages/dsh-subagent-remote/runs.json`：
+启动/结束同步落盘，运行中的进度做 1 秒防抖。
+
+- 重启后，上次仍为 `running` 的记录标为 **orphaned**（`中断待核对`），保留 7 天，而不是失败或静默消失；
+- 插件页顶部显示「上次有 N 个未结算的远端任务」，带主机、开始时间、remote session id 和「清除记录」；
+- 顶部指示器对 orphaned 显示 `interrupted — verify`，展开可看详情；
+- 仅解决“看得见/可对账”，**不自动重试、不重连、不续跑**；远端副作用仍需人工核对。
+
 ## 权限模型
 
 需要审批的远端工具调用之前，ACP 会先问客户端（`session/request_permission`）。DSH 的 ACP
@@ -401,8 +500,13 @@ shell 写模式扫描；恶意或被攻陷的 peer 可以谎报工具，扫描�
 外加内置提示、权限决定、`agent=name/version`、`envScrubbed`、`peerExit`。原始错误文本、
 stderr 尾巴和 stdout noise 都是 **debug-only**：
 
+```bash
+# POSIX：给正常的 dsh 命令加前缀
+DSH_SUBAGENT_REMOTE_DEBUG=1 <your dsh command>   # 再派发一次，原始 payload 就会出现
+```
 ```powershell
-$env:DSH_SUBAGENT_REMOTE_DEBUG = '1'   # 再派发一次，原始 payload 就会出现
+# PowerShell
+$env:DSH_SUBAGENT_REMOTE_DEBUG = '1'
 ```
 
 远端是另一个信任域。默认诊断只带固定事实、内置提示和计数器；确实出现的远端来源值
@@ -434,26 +538,32 @@ $env:DSH_SUBAGENT_REMOTE_DEBUG = '1'   # 再派发一次，原始 payload 就会
 
 ## 开发与验证
 
+欢迎贡献：提交前保持 `npm run check && npm test` 全绿；安全问题请按
+[SECURITY.md](SECURITY.md) 私下报告。
+
 ### 测试
 
-```powershell
+```bash
 # 纯单元测试（不需要 DSH、网络、凭据）——CI 也跑这些
 node test/policy-selftest.mjs     # 权限策略
 node test/tool-selftest.mjs       # 统一工具定义 + 派发 + 默认主机解析
-node test/config-selftest.mjs     # 配置、ssh 校验、任务校验、失败、诊断、stderr 解码、env scrub
+node test/config-selftest.mjs     # 配置、委托提示段、ssh 校验、任务校验、失败、诊断、stderr 解码、env scrub
 node test/settings-selftest.mjs   # overlay 合并/原子状态、主机选择、RPC 信封、热加载 payload
+node test/runs-selftest.mjs       # 运行注册表、restore/snapshot、orphan 保留（成功时不打印逐条）
+node test/journal-selftest.mjs    # 持久化日志 roundtrip、orphan 恢复、损坏文件、原子写入
 node test/transport-selftest.mjs  # 对着 mock peer 的 ACP 传输
 node test/client-contract-selftest.mjs  # client bundle 的 `inject` 契约（每个 ctx.<service> 都已声明）
 npm run check                     # 对每个源码文件 node --check
-npm test                          # 全部六个文件（331 项检查，约 7 秒）
+npm test                          # 全部八个套件（395 条打印检查 + runs-selftest，约 4 秒）
 ```
 
-最新证据：本次打包/展示规范化在 2026-11-05 上跑通 `npm run check` 与 `npm test`（六个离线
-套件全过，末尾含 `PASS client-contract-selftest`）；`engines.dsh` 兼容窗口已在本机
-DSH 0.2.1-rc.5 安装上核对（2026-11-04）。
+最新证据：2026-11-09 在 macOS（Node 26.13.0）上以 `0.9.2-rc.8` 跑通 `npm run check`
+与 `npm test`——八个套件全过，含 `PASS client-contract-selftest`；`engines.dsh` 兼容
+窗口已在本机 DSH 0.2.1-rc.5 与 0.2.2-rc.1 安装上核对。`runs-selftest.mjs` 只在失败时
+打印，因此全绿时会以 `PASS runs-selftest` 行结尾。
 
-端到端与 Playwright 验收 harness 只存在于维护者 checkout，不在发布包里。npm tarball 完全
-不含 `test/`（六个离线套件保留在仓库/CI），这个切分由 `files` 控制。
+端到端与 Playwright 验收 harness 只存在于维护者 checkout，不在发布包里。npm tarball
+完全不含 `test/`（八个离线套件保留在仓库/CI），这个切分由 `files` 控制。
 
 transport 套件会 spawn `test/fixtures/mock-acp-peer.mjs`（行为由
 `MOCK_MODE=ok|permission|hang|noise|crash|unknown-request|session-mismatch|env` 选择），
@@ -463,10 +573,10 @@ close vs keep、期望 agent 不匹配——外加一个孤儿审计，确认每
 
 ### 升级检查清单
 
-这里的协议事实是以 DSH **0.2.1-rc.2** 实测的，到 0.2.1-rc.5 的打包 pass 为止未变。
+这里的协议事实是以 DSH **0.2.1-rc.2** 实测的，到 0.2.2-rc.1 的验证 pass 为止未变。
 任一端升级 DSH 后：
 
-1. `npm test`（全部六个文件）——捕获配置/协议契约漂移。
+1. `npm test`（全部八个套件）——捕获配置/协议契约漂移。
 2. 对每台配置的主机跑一次只读委派（维护者的端到端 harness 在本地 checkout，不在本包里）。
 3. 看完成通知的 `agent=` 行：ACP 服务端的 `agentInfo.version` **不是** DSH 版本，真正
    的版本闸门需要带外检查（`ssh <host> dsh --version`）；`expectAgentName` 只钉 agent 身份。
@@ -484,16 +594,19 @@ fail-closed、原始 payload 仅 debug 可见。刻意的差异是：我们的 `
 
 1. 改 `package.json` 的 `version` 并在 `CHANGELOG.md` 加条目。
 2. `npm run check && npm test`。
-3. 打标签并推送：`git tag v0.9.2-rc.5 && git push origin main --tags`（或手动跑
-   **publish** workflow）。
-4. `.github/workflows/publish.yml` 带 npm provenance 发布；预发布版本进 `next` dist-tag，
-   正式版进 `latest`。需要仓库 secret `NPM_TOKEN`；`prepublishOnly` 会在本地重跑检查。
+3. 提交版本号后，用同一版本打标签并推送（或在 UI 里手动跑 **publish** workflow）：
+   `git tag v0.9.2-rc.8 && git push origin main --tags`。标签 `vX.Y.Z` 与
+   `package.json` 不一致时 workflow 会拒绝。
+4. `.github/workflows/publish.yml` 带 npm provenance（OIDC）发布；预发布版本进 `next`
+   dist-tag，正式版进 `latest`。需要仓库 secret `NPM_TOKEN`；`prepublishOnly` 会在本地
+   重跑检查。
 
 ### CI
 
-`.github/workflows/ci.yml` 已为公开仓库准备（Ubuntu + Windows，Node 22）：语法检查 + 全部
-六个离线测试文件（含 client contract selftest）。Playwright 设置页验收刻意不进 CI
-（它需要运行中的 Web UI）。
+`.github/workflows/ci.yml` 在每次 push/PR 上跑：Ubuntu、Windows、macOS × Node 22/24
+（`npm run check` + 全部八个离线套件），另有独立打包 job 执行 `npm pack --dry-run` 并
+断言 tarball 不含 `test/`、`.git*`、`.tgz`。Playwright 设置页验收刻意不进 CI（它需要
+运行中的 Web UI）。
 
 ## 安装 / 卸载 / 回滚
 
@@ -505,13 +618,14 @@ fail-closed、原始 payload 仅 debug 可见。刻意的差异是：我们的 `
 
 ### 卸载
 
-```powershell
+```bash
 dsh plugin --profile <profile> remove dsh-subagent-remote
 ```
 
 或在插件页移除，然后重启 DSH。可选清理：删除 overlay `$DSH_HOME/subagent-remote.json`
-——它保存页面添加的主机和默认主机选择（打算重装就保留）。远端持久化会话不会被删除
-（见已知限制）。
+——它保存页面添加的主机和默认主机选择（打算重装就保留）——以及运行日志目录
+`$DSH_HOME/storages/dsh-subagent-remote/`（有界运行快照，含 orphaned 记录）。远端持久化
+会话不会被删除（见已知限制）。
 
 ### 回滚
 
@@ -530,8 +644,18 @@ dsh plugin --profile <profile> remove dsh-subagent-remote
   编辑热生效；只有手改的 JSON 文件需要重启，页面会报告该状态。
 * 远端任务会在目标机器上留下持久化 DSH 会话；插件在诊断里报告其 id 并关闭它，但不删除历史。
 * read-only 分类是保守启发式（工具名白名单 + shell 写模式扫描），不是完整静态分析。
+* 运行日志是本地快照：它让被中断的运行「看得见」，但无法判断远端是否已完成；核对仍需人工，
+  且没有自动重试/续跑。
 
 ## 兼容性
+
+| 组件 | 支持 / 已验证 |
+|---|---|
+| Host DSH | `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`；已在 `0.2.1-rc.5` 与 `0.2.2-rc.1` 验证 |
+| Host Node | `engines.node: ">=22"`（CI 矩阵 Node 22/24） |
+| 本地父会话 UI | Web / DSH 桌面：插件页、会话顶部指示器、`/remote-host`；headless/ACP profile 无 UI 也能工作 |
+| 远端 OS | POSIX（`sh -c`，带 pid 探测）或 Windows OpenSSH（`cmd.exe` 载体，盘符 `cwd`） |
+| npm 已发布构建 | `0.9.2-rc.3`、`0.9.2-rc.4`（`latest`/`next` = `0.9.2-rc.4`）；`0.9.2-rc.5`–`0.9.2-rc.8` 是仓库预发布，未发布到 npm |
 
 - 唯一的兼容闸门是 `engines.dsh: ">=0.2.0-rc.2 <0.3.0"`（与 `engines.node: ">=22"` 并列）；
   DSH 的插件工具链以 `engines.dsh` 作为 DSH 版本窗口的权威依据。旧的
@@ -547,12 +671,19 @@ dsh plugin --profile <profile> remove dsh-subagent-remote
   macOS 与本地 `acp` 目标），并在 **DSH 0.2.2-rc.1** 上验证 macOS 父会话 → Windows 远端
   （2026-11-05，cmd 载体；远端执行 Windows-only PowerShell 任务并回传 closing message）。
   同一版本上验证了 Web UI 的会话顶部指示器：位置在官方「N subagents」之后，running →
-  done 状态与详情菜单均正常。`rc.7` 新增该指示器，委派协议与 `rc.6` 一致，离线套件复跑通过。
+  done 状态与详情菜单均正常。`rc.7` 新增该指示器；`rc.8` 在委派协议不变的前提下加入持久化
+  运行日志与 orphaned 可见性，八个离线套件已复跑（2026-11-09）。
 
-| 插件 | DSH | 状态 |
-|---|---|---|
-| 0.9.2-rc.7 | `0.2.2-rc.1` | 已验证（macOS 父会话 → Windows 远端；Web UI 会话顶部指示器 running → done）— 会话顶部运行指示器 |
-| 0.9.2-rc.6 | `0.2.2-rc.1` | 已验证（macOS 父会话 → Windows 远端，cmd 载体；Windows 父会话 → Linux/macOS 目标）— Windows 远端支持 |
-| 0.9.2-rc.5 | `0.2.1-rc.5` | 已验证（Windows 桌面父会话；Linux/macOS 目标）——打包/展示 pass |
-| 0.9.2-rc.4 | `0.2.1-rc.3` | 已验证（Windows 桌面父会话；Linux/macOS 目标） |
-| 0.9.2-rc.4 | `0.2.1-rc.2` | 已验证 |
+| 插件 | DSH | npm | 状态 |
+|---|---|---|---|
+| 0.9.2-rc.8 | `0.2.2-rc.1` | 未发布 | P0：run journal + orphaned 可见性（可见/可清除；无自动恢复） |
+| 0.9.2-rc.7 | `0.2.2-rc.1` | 未发布 | 已验证（macOS 父会话 → Windows 远端；Web UI 会话顶部指示器 running → done）— 自动委托提示 + 会话顶部运行指示器 |
+| 0.9.2-rc.6 | `0.2.2-rc.1` | 未发布 | 已验证（macOS 父会话 → Windows 远端，cmd 载体；Windows 父会话 → Linux/macOS 目标）— Windows 远端支持 |
+| 0.9.2-rc.5 | `0.2.1-rc.5` | 未发布 | 已验证（Windows 桌面父会话；Linux/macOS 目标）——打包/展示 pass |
+| 0.9.2-rc.4 | `0.2.1-rc.3` | 已发布 | 已验证（Windows 桌面父会话；Linux/macOS 目标）— 桌面启动热修复 |
+| 0.9.2-rc.4 | `0.2.1-rc.2` | 已发布 | 已验证 |
+| 0.9.2-rc.3 | `0.2.1-rc.3` | 已发布 | marketplace 打磨、插件页 + 图标 |
+
+## License
+
+MIT —— 见 [LICENSE](LICENSE)。Copyright © 2026 Xingchen Zhao。
