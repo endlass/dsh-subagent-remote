@@ -1,8 +1,11 @@
 node_modules/
 *.tgz
 *.log
+npm-debug.log*
+*.tmp
 logs/
 coverage/
+pack.json
 .DS_Store
 Thumbs.db
 .idea/
@@ -14,4 +17,4 @@ test/evidence/
 *.pem
 *.key
 .npmrc
-screenshots/
+/screenshots/

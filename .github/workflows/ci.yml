@@ -1,37 +1,87 @@
 name: ci
 
-# Prepared workflow for the eventual public repo: the package root is this
-# directory, tests are dependency-free Node scripts.
+# Public-repo CI: no third-party dependencies, no network, no credentials.
+# The package root is this directory and every suite is a plain Node script, so
+# there is nothing to install.
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
+    name: test (node ${{ matrix.node }}, ${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22, 24]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
       - name: Syntax check
         run: npm run check
-      - name: Permission policy unit tests
-        run: node test/policy-selftest.mjs
-      - name: Unified tool unit tests
-        run: node test/tool-selftest.mjs
-      - name: Config and diagnostics unit tests
-        run: node test/config-selftest.mjs
-      - name: Settings overlay, selection and RPC unit tests
-        run: node test/settings-selftest.mjs
-      - name: ACP transport unit tests (mock peer, no network)
-        run: node test/transport-selftest.mjs
-      - name: Client plugin contract tests
-        run: node test/client-contract-selftest.mjs
+      - name: Unit tests (eight suites)
+        run: npm test
+
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Packaging check (npm pack --dry-run)
+        run: |
+          npm pack --dry-run --json > pack.json
+          node --input-type=commonjs - <<'NODE'
+          const fs = require('node:fs')
+          const [pack] = JSON.parse(fs.readFileSync('pack.json', 'utf8'))
+          const paths = pack.files.map((file) => file.path)
+          const forbidden = paths.filter((path) =>
+            path.startsWith('test/') ||
+            path.startsWith('.github/') ||
+            path.endsWith('.tgz') ||
+            path.endsWith('.log') ||
+            path === '.gitignore' ||
+            path === '.gitattributes'
+          )
+          const required = [
+            'index.js',
+            'package.json',
+            'cordis.patch.yml',
+            'lib/acp.js',
+            'lib/client.js',
+            'lib/journal.js',
+            'lib/policy.js',
+            'lib/runs.js',
+            'lib/settings.js',
+            'lib/tool.js',
+            'locale/en.json',
+            'locale/zh.json',
+            'LICENSE',
+            'README.md',
+            'README.zh.md',
+            'CHANGELOG.md',
+            'SECURITY.md'
+          ]
+          const missing = required.filter((path) => !paths.includes(path))
+          if (forbidden.length > 0 || missing.length > 0) {
+            console.error('packaging check failed')
+            if (forbidden.length > 0) console.error('  must not ship:', forbidden.join(', '))
+            if (missing.length > 0) console.error('  missing:', missing.join(', '))
+            process.exit(1)
+          }
+          console.log(`packaging ok: ${paths.length} files, ${pack.size} bytes packed`)
+          NODE
