@@ -59,6 +59,9 @@ jobs:
             printf 'registry=https://registry.npmjs.org/\n' > "${RUNNER_TEMP:-/tmp}/npmrc-trusted"
             export NPM_CONFIG_USERCONFIG="${RUNNER_TEMP:-/tmp}/npmrc-trusted"
             echo "::notice title=publish mode::trusted publishing (GitHub OIDC, npm token not used)"
+            echo "::notice title=npm cli::$(npm --version)"
+            echo "::notice title=oidc endpoint::present=${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+            echo "::notice title=github workflow ref::${GITHUB_WORKFLOW_REF:-${GITHUB_WORKFLOW}}"
           else
             echo "::notice title=publish mode::npm token (NPM_TOKEN secret)"
             if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
@@ -70,11 +73,13 @@ jobs:
           fi
           echo "publishing $VERSION with tag $TAG"
           set +e
-          npm publish --access public --provenance --tag "$TAG" 2>&1 | tee /tmp/publish.log
+          npm publish --access public --provenance --tag "$TAG" --loglevel verbose 2>&1 | tee /tmp/publish.log
           code=${PIPESTATUS[0]}
           if [[ "$code" -ne 0 ]]; then
             DETAIL="$(grep -E 'npm (error|ERR)' /tmp/publish.log | head -n 6 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/ /g' | cut -c1-1100)"
             echo "::error title=npm publish failed::${DETAIL:-unknown npm failure}"
+            AUTHLOG="$(grep -Ei 'oidc|trusted|token exchange|ENEEDAUTH|EOTP|E401|E403|auth' /tmp/publish.log | tail -n 5 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/ /g' | cut -c1-1100)"
+            echo "::error title=npm auth detail::${AUTHLOG:-no auth lines}"
             exit 1
           fi
           # 发布后校验：npm 新版本有 CDN 延迟，最多重试 6 次（~60s）再判定。
