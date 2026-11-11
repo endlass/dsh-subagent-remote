@@ -8,6 +8,19 @@ Published on npm: `0.9.2-rc.3`, `0.9.2-rc.4`, `0.9.2-rc.8` (`latest`/`next`).
 published to npm; install them from a checkout (`link:`) or a locally built
 bundle.
 
+## 0.9.2-rc.9 (unreleased)
+
+Transport hardening: a dying ACP peer can no longer take the DSH Host down.
+
+- `lib/acp.js`: attach `'error'` listeners to the peer's stdin, stdout, stderr and to both
+  `readline` interfaces. A peer that dies between an `alive` check and an in-flight
+  `stdin.write` used to raise an unhandled `EPIPE` stream error; Node promotes that to a
+  process-level `uncaughtException`, and plugins run inside the DSH Host process, so the whole
+  DSH exited (2026-11-11 incident). Pending RPCs are rejected instead, and the existing exit
+  handler still owns lifecycle/teardown.
+- `writeFrame` now converts a synchronous stdin write failure into a descriptive error.
+- Existing transport selftest (114 checks) and the full selftest suite stay green.
+
 ## 0.9.2-rc.8 (published on `latest`/`next`)
 
 Durable run journal + orphaned-run visibility (P0 exception handling).
