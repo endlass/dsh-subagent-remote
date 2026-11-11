@@ -55,6 +55,9 @@ jobs:
           # 否则回退到 NPM_TOKEN secret。切换后建议删除 secret 并吊销 token。
           if [[ "${USE_TRUSTED_PUBLISHING:-}" == "true" ]]; then
             unset NODE_AUTH_TOKEN
+            # 用干净的 userconfig 覆盖 setup-node 生成的 _authToken 占位行，确保 npm 走 OIDC 而不是空 token
+            printf 'registry=https://registry.npmjs.org/\n' > "${RUNNER_TEMP:-/tmp}/npmrc-trusted"
+            export NPM_CONFIG_USERCONFIG="${RUNNER_TEMP:-/tmp}/npmrc-trusted"
             echo "::notice title=publish mode::trusted publishing (GitHub OIDC, npm token not used)"
           else
             echo "::notice title=publish mode::npm token (NPM_TOKEN secret)"
