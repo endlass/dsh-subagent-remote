@@ -59,7 +59,7 @@ jobs:
           npm publish --access public --provenance --tag "$TAG" 2>&1 | tee /tmp/publish.log
           code=${PIPESTATUS[0]}
           if [[ "$code" -ne 0 ]]; then
-            DETAIL="$(grep -E 'npm (error|ERR)' /tmp/publish.log | tail -n 3 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/ /g' | cut -c1-800)"
+            DETAIL="$(grep -E 'npm (error|ERR)' /tmp/publish.log | head -n 6 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/ /g' | cut -c1-1100)"
             echo "::error title=npm publish failed::${DETAIL:-unknown npm failure}"
             exit 1
           fi
