@@ -8,6 +8,14 @@ Published on npm: `0.9.2-rc.3`, `0.9.2-rc.4`, `0.9.2-rc.8` (`latest`/`next`), `0
 published to npm; install them from a checkout (`link:`) or a locally built
 bundle.
 
+## 0.9.2-rc.10 (published on `next`)
+
+Trusted Publishing (GitHub OIDC) 发布验证版本，无功能性变更。
+
+- CI：`publish.yml` 支持 Trusted Publishing 双模式（仓库变量 `USE_TRUSTED_PUBLISHING=true`
+  时走 GitHub OIDC，不再使用 `NPM_TOKEN`）；发布前升级 npm CLI，发布后轮询 registry 校验。
+- 应用代码与 0.9.2-rc.9 相同（ACP 管道错误兜底等）。
+
 ## 0.9.2-rc.9 (published on `next`)
 
 Transport hardening: a dying ACP peer can no longer take the DSH Host down.
