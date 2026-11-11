@@ -3,12 +3,12 @@
 All notable changes to `dsh-subagent-remote` are documented here. Versions use
 semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
-Published on npm: `0.9.2-rc.3`, `0.9.2-rc.4`, `0.9.2-rc.8` (`latest`/`next`).
+Published on npm: `0.9.2-rc.3`, `0.9.2-rc.4`, `0.9.2-rc.8` (`latest`/`next`), `0.9.2-rc.9` (`next`, 2026-11-11).
 `0.9.2-rc.5`–`0.9.2-rc.7` are repository pre-releases that were **not**
 published to npm; install them from a checkout (`link:`) or a locally built
 bundle.
 
-## 0.9.2-rc.9 (unreleased)
+## 0.9.2-rc.9 (published on `next`)
 
 Transport hardening: a dying ACP peer can no longer take the DSH Host down.
 
