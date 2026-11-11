@@ -46,5 +46,20 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           if [[ "$VERSION" == *-* ]]; then TAG=next; else TAG=latest; fi
+          # 无 admin 权限时读不到 Actions 日志：把关键诊断写进 annotation（公开可读）。
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::error title=NPM_TOKEN missing::NPM_TOKEN secret 未注入：需为 Repository secret（非 Environment secret），名称精确 NPM_TOKEN"
+            exit 1
+          fi
+          echo "::notice title=npm token::NPM_TOKEN present"
+          WHO="$(npm whoami 2>&1 || true)"
+          echo "::notice title=npm whoami::$(printf '%s' "$WHO" | tail -n 1 | cut -c1-300)"
           echo "publishing $VERSION with tag $TAG"
-          npm publish --access public --provenance --tag "$TAG"
+          set +e
+          npm publish --access public --provenance --tag "$TAG" 2>&1 | tee /tmp/publish.log
+          code=${PIPESTATUS[0]}
+          if [[ "$code" -ne 0 ]]; then
+            DETAIL="$(grep -E 'npm (error|ERR)' /tmp/publish.log | tail -n 3 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/ /g' | cut -c1-800)"
+            echo "::error title=npm publish failed::${DETAIL:-unknown npm failure}"
+            exit 1
+          fi
