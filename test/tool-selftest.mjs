@@ -75,17 +75,21 @@ const hostAResult = await call(definition, { host: 'host-a', description: 'probe
 check('host-a activation id', hostAResult, { kind: 'activation', subagentId: 'child-1' })
 check('provider mapped', starts[0].provider, 'remote-host-a')
 check('label passed', starts[0].label, 'probe')
-check('prompt block', starts[0].request.prompt, [{ type: 'text', text: 'uname -a' }])
-check('parent passed', starts[0].request.parent.id, 'parent-1')
+check('prompt block', starts[0].prompt, [{ type: 'text', text: 'uname -a' }])
+check('parent passed', starts[0].parent.id, 'parent-1')
 check('delivery parent', starts[0].delivery, 'parent')
-check('no childId requested', starts[0].request.childId, undefined)
-check('no maxDepth requested', starts[0].request.maxDepth, undefined)
-check('no cwd by default', starts[0].request.cwd, undefined)
+check('no childId requested', starts[0].childId, undefined)
+check('no maxDepth requested', starts[0].maxDepth, undefined)
+check('no cwd by default', starts[0].cwd, undefined)
+// Host contract: SubagentActivationSpec extends SubagentStartRequest, so the fields are
+// flat. A nested `request` wrapper made the real Host read `spec.parent.id` of undefined.
+check('spec is flat (no request wrapper)', starts[0].request, undefined)
+checkTrue('abort signal forwarded', starts[0].signal instanceof AbortSignal, String(starts[0].signal))
 
 const macResult = await call(definition, { host: 'mac', description: 'probe', prompt: 'sw_vers', cwd: '/tmp' })
 check('mac activation id', macResult.subagentId, 'child-2')
 check('mac provider mapped', starts[1].provider, 'remote-mac')
-check('cwd forwarded', starts[1].request.cwd, '/tmp')
+check('cwd forwarded', starts[1].cwd, '/tmp')
 
 // --- default host resolution (host omitted) -------------------------------
 const resolving = buildUnifiedRemoteTool({

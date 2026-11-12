@@ -8,6 +8,22 @@ Published on npm: `0.9.2-rc.3`, `0.9.2-rc.4`, `0.9.2-rc.8` (`latest`/`next`), `0
 published to npm; install them from a checkout (`link:`) or a locally built
 bundle.
 
+## 0.9.2-rc.11 (not published)
+
+Host-contract fix: dispatch works on DSH 0.2.2 again.
+
+- `lib/tool.js`: `ctx.subagents.startActivation()` takes `SubagentActivationSpec`, which extends
+  `Omit<SubagentStartRequest, 'label' | 'signal'>` — `prompt`, `parent` and `cwd` are **flat**
+  spec fields. The unified tool still nested them under a `request` wrapper (the pre-0.2.1
+  shape), so the Host read `spec.parent.id` of `undefined` and every dispatch failed with
+  `Cannot read properties of undefined (reading 'id')` before the provider was consulted.
+  Verified end-to-end afterwards: macOS 27.2.1 (dsh 0.2.2-rc.1, over an SSH relay) and
+  Ubuntu 24.04.5 (dsh 0.2.2-alpha.3) both completed with `peerExit=code=0`.
+- `test/tool-selftest.mjs`: the mock asserted the plugin's own nested assumption, which is why
+  the suite stayed green while the real Host rejected every call. It now asserts the flat
+  contract (plus `spec.request === undefined` and abort-signal forwarding) so re-nesting fails
+  CI instead of production.
+
 ## 0.9.2-rc.10 (published on `next`)
 
 Trusted Publishing (GitHub OIDC) 发布验证版本，无功能性变更。
