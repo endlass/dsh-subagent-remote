@@ -387,6 +387,12 @@ export function normalizeHosts(config) {
  * `/private/tmp`, which looks usable but does not exist on the remote. When the
  * configured cwd is a drive-letter path, it is the only valid session cwd.
  *
+ * Since `lib/tool.js` now always passes a cwd (the caller's, else the host's
+ * configured workspace), this fallback only decides for callers that still let
+ * the manager inject the parent cwd — legacy one-row-per-host configs and any
+ * direct `startActivation` user. Two POSIX machines cannot be told apart by path
+ * shape, which is why the tool no longer relies on this guess.
+ *
  * @param {string|undefined} requested `request.cwd` from the manager
  * @param {string} fallback host-configured remote cwd
  * @param {'ssh'|'local'} mode

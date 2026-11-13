@@ -392,7 +392,7 @@ machine whose DSH is only reachable as an app-bundled binary:
   provider: remote-local
   local: true
   profile: acp
-  cwd: C:/Users/me/workspace        # absolute; the parent's cwd wins when it is an absolute path
+  cwd: C:/Users/me/workspace        # absolute; the default when the tool passes no cwd
   permission: read-only
 # optional: localCommand: C:/path/to/dsh.cmd   (explicit launcher wins over auto-detection)
 ```
@@ -584,11 +584,15 @@ targets use `deny` or a remote sandbox; treat the remote closing message as
   pid if the SSH handshake captured one.
 * Non-JSON lines on the peer's stdout are tolerated and counted; the raw lines are
   debug-only (see below).
-* The remote workspace path: the manager always injects the parent's absolute
-  cwd. For SSH hosts the plugin uses it only when it is a POSIX path; otherwise it
-  falls back to the host's `cwd`. When the host `cwd` is a drive-letter path (a
-  Windows remote) it is the only valid value — a POSIX parent path would fail the
-  remote `session/new`.
+* The remote workspace path: the model tool now **always** passes a cwd — the
+  caller's explicit value, otherwise the host's configured `cwd` (matching the
+  tool's "omit to use the host default"). Omitting it lets the manager inject the
+  parent's absolute path, and two POSIX machines cannot be told apart by path
+  shape: a macOS `/Users/...` sent to a Linux remote fails `session/prompt`
+  (reproduced live on 2026-11-13). `pickSessionCwd()`'s POSIX / drive-letter
+  fallback remains for direct `startActivation` callers and legacy
+  one-row-per-host configs; a drive-letter host `cwd` is still the only valid
+  value for a Windows remote.
 * The diagnostic also carries `peerExit` (code/signal/pid) on failures, so a dead
   transport is distinguishable from a remote task failure.
 

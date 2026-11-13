@@ -350,7 +350,7 @@ Git Bash；远端 pid 探测不可用，teardown 仍会关闭 ACP 会话并结�
   provider: remote-local
   local: true
   profile: acp
-  cwd: C:/Users/me/workspace        # 绝对路径；父会话 cwd 是绝对路径时以父会话为准
+  cwd: C:/Users/me/workspace        # 绝对路径；工具未显式传 cwd 时作为默认工作区
   permission: read-only
 # 可选：localCommand: C:/path/to/dsh.cmd   （显式启动器优先于自动探测）
 ```
@@ -503,9 +503,11 @@ shell 写模式扫描；恶意或被攻陷的 peer 可以谎报工具，扫描�
   会话并杀掉传输进程（Windows 用 `taskkill /T`，其他平台 `SIGTERM`/`SIGKILL`），若 SSH
   握手抓到了远端 pid 还会回收它。
 * peer stdout 上的非 JSON 行会被容忍并计数；原始行只在 debug 下可见（见下）。
-* 远端工作区路径：管理器始终注入父会话的绝对 cwd。SSH 主机只在该路径是 POSIX 路径时才用它，
-  否则回退到主机的 `cwd`；当主机 `cwd` 是盘符路径（Windows 远端）时一律使用主机 `cwd`
-  （否则 POSIX 父会话的路径会让远端 `session/new` 失败）。
+* 远端工作区路径：模型工具**始终**传一个 cwd——调用方显式给的优先，否则用主机配置的 `cwd`
+  （与“省略 cwd 用主机默认”的说明一致）。省略时若不传，管理器会注入父会话的绝对路径；两台
+  POSIX 机器靠路径形状区分不了，macOS 的 `/Users/...` 打到 Linux 会在 `session/prompt`
+  失败（2026-11-13 真机复现）。`pickSessionCwd()` 的 POSIX/盘符回退只保留给直连
+  `startActivation` 的调用方与旧版「一主机一行」配置；主机 `cwd` 是盘符路径时仍是唯一合法值。
 * 失败时诊断还会携带 `peerExit`（code/signal/pid），因此传输死掉和远端任务失败可区分。
 
 ## 诊断

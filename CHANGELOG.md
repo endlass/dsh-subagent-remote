@@ -33,6 +33,12 @@ bundle.
 - `lib/tool.js`：目录行标签改为 `[<host>] <description>`。外部子级在目录里只有 `label`
   与 `name` 两个字段可控，而 `name` 在同一创建者下唯一、重名会被运行时以
   `DUPLICATE_AGENT_NAME` 拒绝（同一主机并发两次就会踩到），因此只改 label、不传 name。
+- `lib/tool.js`：**默认工作区修成主机配置**。工具现在始终传 cwd——调用方显式给的优先，否则用
+  `host.cwd`；此前省略 cwd 时管理器会注入父会话的绝对路径，而两台 POSIX 机器靠路径形状区分
+  不了（2026-11-13 真机验收：macOS `/Users/...` 打到火山云 Linux，`session/prompt failed:
+  -32603`，4.4s 报 product-error）。`pickSessionCwd()` 保留给直连 `startActivation` 的调用方
+  与旧版「一主机一行」配置，行为不变；`test/tool-selftest.mjs` 断言「省略 cwd 时用主机工作区、
+  显式 cwd 优先」。
 - 诊断可观测：分区与详情页注册成功/缺席各写一行日志（`panel section registered` /
   `panel section absent`），升级后不用猜是「崩了」还是「席位改了」。
 - 测试：新增 `test/cancel-selftest.mjs`（RPC 契约：幂等、坏请求、宿主抛错不冒泡）与

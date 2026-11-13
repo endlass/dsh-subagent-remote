@@ -80,7 +80,12 @@ check('parent passed', starts[0].parent.id, 'parent-1')
 check('delivery parent', starts[0].delivery, 'parent')
 check('no childId requested', starts[0].childId, undefined)
 check('no maxDepth requested', starts[0].maxDepth, undefined)
-check('no cwd by default', starts[0].cwd, undefined)
+// Omitted cwd must be the HOST workspace, never the parent session's directory:
+// the manager would otherwise inject a local absolute path, and two POSIX machines
+// (macOS parent, Linux remote) are indistinguishable by path shape. A live
+// Mac->Linux dispatch failed exactly this way with `session/prompt failed`.
+check('default cwd is the host workspace', starts[0].cwd, '/srv/work')
+check('default cwd is not the parent session directory', starts[0].cwd === '/Users/zhaoxingchen/x', false)
 // Host contract: SubagentActivationSpec extends SubagentStartRequest, so the fields are
 // flat. A nested `request` wrapper made the real Host read `spec.parent.id` of undefined.
 check('spec is flat (no request wrapper)', starts[0].request, undefined)
@@ -89,7 +94,7 @@ checkTrue('abort signal forwarded', starts[0].signal instanceof AbortSignal, Str
 const macResult = await call(definition, { host: 'mac', description: 'probe', prompt: 'sw_vers', cwd: '/tmp' })
 check('mac activation id', macResult.subagentId, 'child-2')
 check('mac provider mapped', starts[1].provider, 'remote-mac')
-check('cwd forwarded', starts[1].cwd, '/tmp')
+check('explicit cwd wins over the host workspace', starts[1].cwd, '/tmp')
 
 // --- default host resolution (host omitted) -------------------------------
 const resolving = buildUnifiedRemoteTool({
