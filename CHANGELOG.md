@@ -4,7 +4,8 @@ All notable changes to `dsh-subagent-remote` are documented here. Versions use
 semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
 Published on npm: `0.9.2-rc.3`, `0.9.2-rc.4`, `0.9.2-rc.8` (`latest`/`next`), `0.9.2-rc.9`
-(`next`, 2026-11-11), `0.9.3-rc.1` (`next`, 2026-11-13, GitHub OIDC trusted publishing).
+(`next`, 2026-11-11), `0.9.3-rc.1` (`next`, 2026-11-13, GitHub OIDC trusted publishing;
+promoted to `latest` the same day via the `promote-v*` workflow, OIDC dist-tag).
 `0.9.2-rc.5`–`0.9.2-rc.7` are repository pre-releases that were **not**
 published to npm; install them from a checkout (`link:`) or a locally built
 bundle.
