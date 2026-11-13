@@ -47,5 +47,33 @@ check('every ctx.<service> access is declared in inject', missing.length === 0, 
 // declared inject list still covers the ones we read on the root context.
 check('client bundle registers exactly one Cordis plugin', /module\.exports\s*=\s*plugin/.test(source))
 
+// --- subagent-panel integration (DSH 0.2.1-rc.2+ seats) -------------------
+// The two seats we extend belong to other plugins. They must stay optional: the
+// Sidebar services are obtained through ctx.inject(), never through the hard
+// `inject` array, so a build without the right Sidebar cannot fail the plugin.
+check(
+  'panel section targets the subagent catalog footer',
+  /conversation\.session\.header\.actions\.subagent\.footer/.test(source),
+)
+check('detail body targets the right Sidebar tab seat', /sidebar\.right\.pane\.tab'/.test(source))
+check(
+  'Sidebar services are injected lazily, not declared as hard dependencies',
+  !declared.has('sidebarRight') && !declared.has('sidebarRightTabs') && /ctx\.inject\(\['sidebarRight'/.test(source),
+)
+check(
+  'panel and detail renders are error-boundaried',
+  /class DsrBoundary/.test(source) && /guarded\(RemoteRunsPanel/.test(source) && /guarded\(RemoteRunsDetail/.test(source),
+)
+check('the stop control calls the cancelRun RPC', /'cancelRun'/.test(source))
+check(
+  'seat availability is logged (registered / absent)',
+  /panel section registered/.test(source) && /panel section absent/.test(source),
+)
+check(
+  'the new seats add no portal or global listener',
+  !/createPortal/.test(source.slice(source.indexOf('class DsrBoundary'), source.indexOf('function installHeaderRuns')))
+    && !/document\.addEventListener/.test(source.slice(source.indexOf('class DsrBoundary'), source.indexOf('function installHeaderRuns'))),
+)
+
 console.log(failed === 0 ? '\nPASS client-contract-selftest' : `\nFAIL client-contract-selftest (${failed})`)
 process.exit(failed === 0 ? 0 : 1)

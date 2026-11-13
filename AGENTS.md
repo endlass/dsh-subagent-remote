@@ -27,6 +27,10 @@
 - 契约变更同步 `SECURITY.md`/README 与 CHANGELOG。
 - 跨机验收：Mac ↔ 火山云真机 one-shot 派发冒烟（含离线/超时路径）。
 
-## 当前需求（待落地）
+## 当前需求
 
-- 手工提醒 / 自动注入开关；派发状态在会话内可见；异常与远端下线处理（详见 dossiers 的 projects/active.md）。
+- 已完成（0.9.3-rc.1）：编队面板接入——子智能体目录底部「远端子智能体」分区 +
+  右侧栏「远端任务」详情 tab + `cancelRun`（停止，二次确认）+ 目录行标签前置主机名。
+  两个官方插槽均为可选，缺席位只写 `panel section absent` 日志。
+- 待落地：手工提醒 / 自动注入开关（已有 autoPrompt，尚无会话内手动提醒入口）；
+  异常与远端下线处理（详见 dossiers 的 projects/active.md）。

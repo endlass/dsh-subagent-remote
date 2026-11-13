@@ -463,6 +463,32 @@ The same switcher is available conversationally:
 /remote-host reset      # clear the session selection
 ```
 
+### Remote section inside the subagent panel
+
+DSH's conversation header carries a subagent catalog (named agents since 0.2.2). A remote
+run is already an **external task** entry there: every dispatch writes a
+`subagent/catalog` fact (`mode: external`). The official row only shows the description, the
+name and an "external task" tag — it cannot be opened and has no status.
+
+The plugin adds two things on top, both through official extension seats and both
+**optional** (a client build without the seat degrades to one `panel section absent` log
+line):
+
+- **"Remote subagents" section under the catalog**
+  (`conversation.session.header.actions.subagent.footer`, the same seat the Team task board
+  uses): host, status, elapsed, tool count, context usage, closing preview and error; every
+  running task has a two-step **Stop**.
+- **"Remote runs" detail tab in the right Sidebar** (`sidebar.right.pane.tab` plus
+  `ctx.sidebarRightTabs`): every recorded field (target, workspace, permission, started,
+  finished, stop reason, remote session id, preview, error), switchable between tasks.
+  Opening it from the section focuses the existing tab and selects that task.
+- Both renders sit behind an error boundary: a render failure drops that section only and
+  leaves the official catalog and Sidebar untouched.
+
+A remote run still cannot be opened as a remote conversation or continued: that is the DSH
+contract for external children (no local Session, one execution), and the plugin does not
+fake a local shadow session.
+
 ### Session-header run indicator
 
 On Web/Desktop deployments a compact `⇄ <host>` indicator appears in the conversation

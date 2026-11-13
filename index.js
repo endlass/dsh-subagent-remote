@@ -599,9 +599,12 @@ export function renderDiagnostic(facts) {
  * @param {object} request manager-built subagent request
  * @returns {Promise<{id: string, result: Promise<object>, dispose: () => Promise<void>}>}
  */
-async function startRemoteRun(ctx, host, request, runs, onChange) {
+async function startRemoteRun(ctx, host, request, runs, onChange, control) {
   const id = randomUUID()
   const controller = new AbortController()
+  // A user Stop is the same cooperative cancellation the parent signal uses; the
+  // ACP peer is disposed and the run settles as `aborted`.
+  control?.register?.(id, () => controller.abort('cancelled by the user from the session header'))
   const debug = debugDiagnosticsEnabled()
   let settled = false
   let resolveResult
@@ -639,6 +642,7 @@ async function startRemoteRun(ctx, host, request, runs, onChange) {
   const settle = (outcome) => {
     if (settled) return
     settled = true
+    control?.release?.(id)
     resolveResult(outcome)
   }
 
@@ -677,24 +681,31 @@ async function startRemoteRun(ctx, host, request, runs, onChange) {
 
   // `ask` must decide at dispatch time: the approval seam is turn-enclosed and
   // the remote run outlives the delegating turn (see lib/policy.js).
-  if (host.permission === 'ask') {
-    runs?.update(id, { phase: 'authorizing' })
-    onChange?.('async')
-    facts.preAuth = await requestRunPreAuthorization({
-      ctx,
-      request,
-      providerName: host.provider,
-      endpoint: endpointLabel,
-    })
-  }
+  // A dispatch that throws before publishing must not leave a Stop handle behind.
+  let decider
+  try {
+    if (host.permission === 'ask') {
+      runs?.update(id, { phase: 'authorizing' })
+      onChange?.('async')
+      facts.preAuth = await requestRunPreAuthorization({
+        ctx,
+        request,
+        providerName: host.provider,
+        endpoint: endpointLabel,
+      })
+    }
 
-  const decider = createPermissionDecider({
-    mode: host.permission,
-    request,
-    ctx,
-    providerName: host.provider,
-    preAuth: facts.preAuth,
-  })
+    decider = createPermissionDecider({
+      mode: host.permission,
+      request,
+      ctx,
+      providerName: host.provider,
+      preAuth: facts.preAuth,
+    })
+  } catch (error) {
+    control?.release?.(id)
+    throw error
+  }
 
   taskPromise = (async () => {
     runs?.update(id, { phase: 'running' })
@@ -777,6 +788,7 @@ async function startRemoteRun(ctx, host, request, runs, onChange) {
       if (disposal !== undefined) return disposal
       request.signal?.removeEventListener?.('abort', onParentAbort)
       controller.abort('subagent disposed')
+      control?.release?.(id)
       disposal = taskPromise.then(() => undefined, () => undefined)
       return disposal
     },
@@ -834,6 +846,14 @@ export function apply(ctx, config) {
     autoPrompt: overlay.autoPrompt !== false,
   }
   const runRegistry = createRunRegistry()
+  // User-facing Stop handles: keyed by the run id the client already reads from
+  // the `runs` RPC payload, released as soon as the activation settles so a
+  // stale handle can never abort a later run.
+  const runCancels = new Map()
+  const runControl = {
+    register: (id, cancel) => { runCancels.set(id, cancel) },
+    release: (id) => { runCancels.delete(id) },
+  }
   // Durable journal: restore previous runs (running -> orphaned), then keep a
   // bounded snapshot in sync. Begin/finish writes are synchronous so a Host
   // crash shortly after dispatch still leaves an orphaned record on restart.
@@ -901,7 +921,7 @@ export function apply(ctx, config) {
         if (live === undefined) {
           throw new Error(`dsh-subagent-remote: host "${host.name}" is no longer configured`)
         }
-        return startRemoteRun(ctx, live, request, runRegistry, persistRunChange)
+        return startRemoteRun(ctx, live, request, runRegistry, persistRunChange, runControl)
       },
     })
     providerDisposers.set(host.name, { providerName: host.provider, dispose })
@@ -997,6 +1017,12 @@ export function apply(ctx, config) {
       setState: (next) => writeState(next),
       setAutoPrompt: (enabled) => { runtime.autoPrompt = enabled },
       getRuns: (sessionId) => runRegistry.list(sessionId),
+      cancelRun: (runId) => {
+        const cancel = runCancels.get(runId)
+        if (typeof cancel !== 'function') return { cancelled: false, reason: 'not-running' }
+        cancel()
+        return { cancelled: true }
+      },
       clearOrphaned: () => {
         const removed = runRegistry.clearOrphaned()
         persistRunChange('sync')

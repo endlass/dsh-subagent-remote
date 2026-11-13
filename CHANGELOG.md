@@ -8,6 +8,40 @@ Published on npm: `0.9.2-rc.3`, `0.9.2-rc.4`, `0.9.2-rc.8` (`latest`/`next`), `0
 published to npm; install them from a checkout (`link:`) or a locally built
 bundle.
 
+## 0.9.3-rc.1 (not published)
+
+编队面板接入：远端任务在会话页头的子智能体目录里有了自己的分区，可停止、可看详情。
+全部改动都在插件层（客户端插槽 + 一个 RPC），不动 Host 契约、不改 asar。
+
+- `lib/client.js`：接入两个官方扩展点，二者都是**可选**的——客户端没有该席位时插件照常
+  启动，只写一行 `panel section absent` 日志，头部指示器与派发不受影响：
+  - `conversation.session.header.actions.subagent.footer`（Team 任务板同款）：目录底部
+    「远端子智能体」分区，显示主机、状态、耗时、工具次数、上下文用量、收尾预览与错误；
+    本会话没有远端任务时整段不渲染（零成本）。
+  - `sidebar.right.pane.tab` + `ctx.sidebarRightTabs`：右侧栏「远端任务」详情页（全量字段、
+    多任务切换）。点分区里的「详情」打开同一个 tab，已打开则聚焦并按 navigation params
+    切换选中任务。
+  - 两处渲染各套一层 error boundary：异常只让该分区消失，不会冒到官方的子智能体目录或
+    右侧栏；两处都不使用 portal、不挂全局监听、不接管键盘与焦点（官方目录自己管
+    pointerdown/Escape/focus）。
+- `lib/settings.js`、`index.js`：新增 `cancelRun` RPC（`{runId}` → `{cancelled, reason?}`）。
+  停止复用已有的 AbortController（与父级 abort 同一条路径：`controller.abort(...)` → ACP
+  peer dispose → 以 `aborted` 结算），activation settle 时释放句柄。未知或已结束的 run 返回
+  `{cancelled:false, reason:"not-running"}`；宿主异常返回 `reason:"failed: …"`，不会变成
+  unhandled rejection（这是唯一能真把 Host 带下去的路径，见 0.9.2-rc.9 的 EPIPE 事故）。
+  UI 端停止需要二次确认（4 秒内再点一次），避免误停一个已跑了十分钟的远端任务。
+- `lib/tool.js`：目录行标签改为 `[<host>] <description>`。外部子级在目录里只有 `label`
+  与 `name` 两个字段可控，而 `name` 在同一创建者下唯一、重名会被运行时以
+  `DUPLICATE_AGENT_NAME` 拒绝（同一主机并发两次就会踩到），因此只改 label、不传 name。
+- 诊断可观测：分区与详情页注册成功/缺席各写一行日志（`panel section registered` /
+  `panel section absent`），升级后不用猜是「崩了」还是「席位改了」。
+- 测试：新增 `test/cancel-selftest.mjs`（RPC 契约：幂等、坏请求、宿主抛错不冒泡）与
+  `test/client-boot-selftest.mjs`（真跑客户端模块：注册到哪个槽、缺右侧栏 / 席位抛错时
+  仍能启动）；`test/client-contract-selftest.mjs` 增加 6 条断言，其中一条锁定「右侧栏服务
+  必须走 `ctx.inject` 惰性注入，不得写进硬依赖 inject 数组」。
+- 已知边界：远端任务在官方目录里仍是不可点开的「外部任务」叶子（无状态点/无 token 列），
+  这是 `subagentCatalog` 投影的契约（不携带执行状态）；详情页是本机记录，不是远端会话。
+
 ## 0.9.2-rc.11 (not published)
 
 Host-contract fix: dispatch works on DSH 0.2.2 again.
