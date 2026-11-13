@@ -3,12 +3,13 @@
 All notable changes to `dsh-subagent-remote` are documented here. Versions use
 semantic versioning; `-rc.N`/`-spike` suffixes are pre-release.
 
-Published on npm: `0.9.2-rc.3`, `0.9.2-rc.4`, `0.9.2-rc.8` (`latest`/`next`), `0.9.2-rc.9` (`next`, 2026-11-11).
+Published on npm: `0.9.2-rc.3`, `0.9.2-rc.4`, `0.9.2-rc.8` (`latest`/`next`), `0.9.2-rc.9`
+(`next`, 2026-11-11), `0.9.3-rc.1` (`next`, 2026-11-13, GitHub OIDC trusted publishing).
 `0.9.2-rc.5`–`0.9.2-rc.7` are repository pre-releases that were **not**
 published to npm; install them from a checkout (`link:`) or a locally built
 bundle.
 
-## 0.9.3-rc.1 (not published)
+## 0.9.3-rc.1 (published on `next`, 2026-11-13)
 
 编队面板接入：远端任务在会话页头的子智能体目录里有了自己的分区，可停止、可看详情。
 全部改动都在插件层（客户端插槽 + 一个 RPC），不动 Host 契约、不改 asar。
